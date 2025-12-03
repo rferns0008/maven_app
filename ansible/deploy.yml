@@ -1,0 +1,39 @@
+- name: Deploy Maven App Docker Container
+  hosts: target
+  become: yes
+  vars:
+    docker_image: ""
+
+  tasks:
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Pull application image
+      community.docker.docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+
+    - name: Stop existing container
+      community.docker.docker_container:
+        name: mavenapp
+        state: absent
+      ignore_errors: yes
+
+    - name: Start new container
+      community.docker.docker_container:
+        name: mavenapp
+        image: "{{ docker_image }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "8080:8080"
