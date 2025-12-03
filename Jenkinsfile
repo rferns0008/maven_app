@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_REPO = "rferns0008/maven-app"
+        IMAGE_REPO = "rferns/maven-app"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         FULL_IMAGE = "${IMAGE_REPO}:${IMAGE_TAG}"
 
