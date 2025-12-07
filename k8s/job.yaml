@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: my-app-job
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: my-app
+          image: myapp:k8s
+          imagePullPolicy: Never
+          command: ["java", "-jar", "app.jar"]

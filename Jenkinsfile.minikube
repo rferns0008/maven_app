@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Maven Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Use Minikube Docker Daemon') {
+            steps {
+                sh 'eval $(minikube docker-env)'
+            }
+        }
+
+        stage('Build Minikube Image') {
+            steps {
+                sh 'docker build -f Dockerfile.minikube -t myapp:k8s .'
+            }
+        }
+
+        stage('Load Image into Minikube') {
+            steps {
+                sh 'minikube image load myapp:k8s'
+            }
+        }
+
+        stage('Run Kubernetes Job') {
+            steps {
+                sh '''
+                    # Delete previous Job if exists
+                    kubectl delete job my-app-job --ignore-not-found=true
+
+                    # Apply Job
+                    kubectl apply -f k8s/job.yaml
+
+                    echo "Waiting for job to complete..."
+                    kubectl wait --for=condition=complete job/my-app-job --timeout=60s
+
+                    echo "Job logs:"
+                    POD=$(kubectl get pod -l app=my-app -o jsonpath="{.items[0].metadata.name}")
+                    kubectl logs $POD
+                '''
+            }
+        }
+    }
+}
+

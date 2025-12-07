@@ -1,0 +1,15 @@
+# ---- Base JVM Image ----
+FROM eclipse-temurin:17-jdk
+
+# ---- Set working directory ----
+WORKDIR /app
+
+# ---- Copy application JAR (built by Maven) ----
+# This copies ANY SNAPSHOT jar from /target/ without needing version changes
+COPY target/*SNAPSHOT.jar app.jar
+
+# ---- Expose application port (adjust if different) ----
+EXPOSE 8080
+
+# ---- Run the Spring Boot / Java application ----
+ENTRYPOINT ["java", "-jar", "app.jar"]
