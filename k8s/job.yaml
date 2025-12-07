@@ -2,6 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: my-app-job
+  namespace: dev
 spec:
   backoffLimit: 0
   template:
@@ -9,9 +10,10 @@ spec:
       labels:
         app: my-app
     spec:
+      serviceAccountName: myapp-sa
       restartPolicy: Never
       containers:
-        - name: my-app
+        - name: myapp-container
           image: myapp:k8s
           imagePullPolicy: Never
           command: ["java", "-jar", "app.jar"]

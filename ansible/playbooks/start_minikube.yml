@@ -1,0 +1,15 @@
+---
+- name: Start Minikube on EC2 Instance
+  hosts: minikube
+  become: yes
+
+  tasks:
+    - name: Start Minikube with Docker driver
+      shell: |
+        minikube start \
+          --driver=docker \
+          --memory=2048 \
+          --cpus=2 \
+          --force
+      args:
+        executable: /bin/bash

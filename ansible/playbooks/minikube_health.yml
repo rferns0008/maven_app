@@ -1,0 +1,28 @@
+---
+- name: Validate Minikube Health
+  hosts: minikube
+  become: yes
+
+  tasks:
+
+    - name: Minikube Status
+      shell: minikube status --output json
+      register: minikube_status
+
+    - debug:
+        var: minikube_status.stdout
+
+    - name: Kubernetes Nodes
+      shell: kubectl get nodes -o wide
+      register: kube_nodes
+
+    - debug:
+        var: kube_nodes.stdout
+
+    - name: Kubernetes Pods (all namespaces)
+      shell: kubectl get pods --all-namespaces
+      register: kube_pods
+
+    - debug:
+        var: kube_pods.stdout
+

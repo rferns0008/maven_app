@@ -1,0 +1,77 @@
+---
+- name: Install Kubernetes + Docker prerequisites on Minikube Host
+  hosts: minikube
+  become: yes
+
+  tasks:
+
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required utilities
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - wget
+          - jq
+          - conntrack
+          - socat
+        state: present
+
+    - name: Install Docker engine
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Ensure Docker running
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    # -----------------------------------------------------
+    # Install kubectl using official APT repo (stable + safe)
+    # -----------------------------------------------------
+
+    - name: Add Kubernetes apt repository GPG key
+      apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+        state: present
+
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: present
+        update_cache: yes
+
+    # -----------------------------------------------------
+    # Install Minikube
+    # -----------------------------------------------------
+
+    - name: Download Minikube binary
+      get_url:
+        url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        dest: /tmp/minikube
+        mode: '0755'
+
+    - name: Install Minikube
+      copy:
+        src: /tmp/minikube
+        dest: /usr/local/bin/minikube
+        mode: '0755'
+        remote_src: yes
