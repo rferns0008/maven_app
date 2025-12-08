@@ -107,8 +107,12 @@ pipeline {
                 withCredentials([
                     sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
                 ]) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'REMOTE_EOF'
+                    
+		     echo "DEBUG: Deploying to EC2_HOST=${EC2_HOST}"
+
+                     sh '''
+                        
+			ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'REMOTE_EOF'
                             set -xeuo pipefail
                             cd ''' + "${REMOTE_DIR}" + '''
 
