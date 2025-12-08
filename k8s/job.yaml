@@ -7,6 +7,6 @@ spec:
     spec:
       containers:
       - name: myapp-container
-        image: rferns/maven-app:{{IMAGE_TAG}}-k8s
+        image: rferns/maven-app:latest-k8s
         imagePullPolicy: Never
       restartPolicy: Never
