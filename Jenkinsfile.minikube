@@ -2,9 +2,11 @@ pipeline {
     agent any
 
     environment {
-        APP_IMAGE = "myapp:k8s"
-        EC2_USER = "ubuntu"
+        EC2_USER  = "ubuntu"
         REMOTE_DIR = "/home/ubuntu/maven_app"
+        APP_IMAGE = "myapp:k8s"
+        NAMESPACE = "dev"
+        EC2_HOST = ""
     }
 
     stages {
@@ -12,6 +14,23 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Read EC2 IP from hosts.ini') {
+            steps {
+                script {
+                    EC2_HOST = sh(
+                        script: "grep -Eo '^[0-9]{1,3}(\\.[0-9]{1,3}){3}' ansible/hosts.ini | head -1",
+                        returnStdout: true
+                    ).trim()
+
+                    if (!EC2_HOST) {
+                        error("No valid EC2 IP found in ansible/hosts.ini")
+                    }
+
+                    echo "Using Minikube EC2 host from hosts.ini: ${EC2_HOST}"
+                }
             }
         }
 
@@ -31,7 +50,7 @@ pipeline {
                     cp -r k8s deploy_package/
                     cp target/*.jar deploy_package/
 
-                    echo "Deployment package contents:"
+                    echo "Package contents:"
                     ls -R deploy_package
                 """
             }
@@ -39,42 +58,60 @@ pipeline {
 
         stage('Copy Package to EC2') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
-                    keyFileVariable: 'SSH_KEY')]) {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ansible-ssh-key',
+                    keyFileVariable: 'SSH_KEY'
+                )]) {
 
                     sh """
                         rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ${SSH_KEY}" \
-                          deploy_package/ ${EC2_USER}@13.213.x.x:${REMOTE_DIR}/
+                          deploy_package/ ${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/
                     """
                 }
             }
         }
 
-        stage('Build Docker Image Inside Minikube') {
+        stage('Build Image + Deploy to Minikube') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
-                    keyFileVariable: 'SSH_KEY')]) {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ansible-ssh-key',
+                    keyFileVariable: 'SSH_KEY'
+                )]) {
 
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@13.213.x.x << 'EOF'
-                            set -e
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@${EC2_HOST} << 'EOF'
+                            set -euo pipefail
                             cd ${REMOTE_DIR}
 
+                            echo "[INFO] Switching Docker to Minikube"
                             eval \$(minikube docker-env)
 
+                            echo "[INFO] Building Docker image inside Minikube..."
                             docker build -t ${APP_IMAGE} -f Dockerfile.minikube .
 
+                            echo "[INFO] Loading image into Minikube"
                             minikube image load ${APP_IMAGE} || true
 
+                            echo "[INFO] Applying Namespaces + RBAC"
                             kubectl apply -f k8s/namespaces.yaml
                             kubectl apply -f k8s/rbac/sa-role-dev.yaml
-                            kubectl delete job my-app-job -n dev --ignore-not-found=true
-                            kubectl apply -f k8s/job.yaml -n dev
 
-                            kubectl wait --for=condition=complete job/my-app-job -n dev --timeout=60s
+                            echo "[INFO] Cleaning old job"
+                            kubectl delete job my-app-job -n ${NAMESPACE} --ignore-not-found=true
 
-                            POD=\$(kubectl get pod -l app=my-app -n dev -o jsonpath="{.items[0].metadata.name}")
-                            kubectl logs \$POD -n dev
+                            echo "[INFO] Deploying workload"
+                            kubectl apply -f k8s/job.yaml -n ${NAMESPACE}
+
+                            kubectl wait --for=condition=complete job/my-app-job \
+                                -n ${NAMESPACE} --timeout=60s
+
+                            POD=\$(kubectl get pod \
+                                -l app=my-app \
+                                -n ${NAMESPACE} \
+                                -o jsonpath="{.items[0].metadata.name}")
+
+                            echo "[INFO] Logs from pod \$POD:"
+                            kubectl logs \$POD -n ${NAMESPACE}
                         EOF
                     """
                 }
@@ -83,14 +120,21 @@ pipeline {
 
         stage('Minikube Health Check') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
-                    keyFileVariable: 'SSH_KEY')]) {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ansible-ssh-key',
+                    keyFileVariable: 'SSH_KEY'
+                )]) {
 
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@13.213.x.x << 'EOF'
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@${EC2_HOST} << 'EOF'
+                            echo "=== Minikube Status ==="
                             minikube status
+
+                            echo "=== Kubernetes Nodes ==="
                             kubectl get nodes -o wide
-                            kubectl get pods -n dev -o wide
+
+                            echo "=== Dev Namespace Pods ==="
+                            kubectl get pods -n ${NAMESPACE} -o wide
                         EOF
                     """
                 }
@@ -103,7 +147,7 @@ pipeline {
             echo "Minikube pipeline completed successfully!"
         }
         failure {
-            echo "Minikube deployment failed!"
+            echo "Minikube pipeline failed!"
         }
     }
 }
