@@ -2,13 +2,9 @@ pipeline {
     agent any
 
     environment {
-        EC2_HOST = ""                 // Will be filled by AWS CLI
-        EC2_USER = "ubuntu"
         APP_IMAGE = "myapp:k8s"
+        EC2_USER = "ubuntu"
         REMOTE_DIR = "/home/ubuntu/maven_app"
-        NAMESPACE = "dev"
-        INSTANCE_ID = "i-02390c9627aea5790"
-        AWS_REGION = "ap-southeast-1"
     }
 
     stages {
@@ -19,48 +15,25 @@ pipeline {
             }
         }
 
-        stage('Fetch Dynamic EC2 Public IP') {
-            steps {
-                script {
-                    EC2_HOST = sh(
-                        script: """
-                            aws ec2 describe-instances \
-                              --instance-id ${INSTANCE_ID} \
-                              --region ${AWS_REGION} \
-                              --query "Reservations[0].Instances[0].PublicIpAddress" \
-                              --output text
-                        """,
-                        returnStdout: true
-                    ).trim()
-
-                    if (EC2_HOST == "None" || EC2_HOST == "") {
-                        error("EC2 instance has no public IP! Is it stopped?")
-                    }
-
-                    echo "Using Dynamic EC2 IP: ${EC2_HOST}"
-                }
-            }
-        }
-
         stage('Build Maven App Locally') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh "mvn clean package -DskipTests"
             }
         }
 
         stage('Prepare Deployment Package') {
             steps {
-                sh '''
+                sh """
                     rm -rf deploy_package || true
                     mkdir deploy_package
 
-                    cp -r Dockerfile.minikube deploy_package/
+                    cp Dockerfile.minikube deploy_package/
                     cp -r k8s deploy_package/
                     cp target/*.jar deploy_package/
 
-                    echo "[INFO] Deployment package contents:"
+                    echo "Deployment package contents:"
                     ls -R deploy_package
-                '''
+                """
             }
         }
 
@@ -71,67 +44,52 @@ pipeline {
 
                     sh """
                         rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ${SSH_KEY}" \
-                            deploy_package/ ${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/
+                          deploy_package/ ${EC2_USER}@13.213.x.x:${REMOTE_DIR}/
                     """
                 }
             }
         }
 
-        stage('Build Image + Deploy to Minikube') {
+        stage('Build Docker Image Inside Minikube') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
                     keyFileVariable: 'SSH_KEY')]) {
 
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@${EC2_HOST} << 'EOF'
-                            set -euo pipefail
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@13.213.x.x << 'EOF'
+                            set -e
                             cd ${REMOTE_DIR}
 
-                            echo "[INFO] Switching docker to Minikube daemon"
                             eval \$(minikube docker-env)
 
-                            echo "[INFO] Building app image inside Minikube..."
                             docker build -t ${APP_IMAGE} -f Dockerfile.minikube .
 
-                            echo "[INFO] Loading image into Minikube"
                             minikube image load ${APP_IMAGE} || true
 
-                            echo "[INFO] Applying Namespaces + RBAC"
                             kubectl apply -f k8s/namespaces.yaml
                             kubectl apply -f k8s/rbac/sa-role-dev.yaml
+                            kubectl delete job my-app-job -n dev --ignore-not-found=true
+                            kubectl apply -f k8s/job.yaml -n dev
 
-                            echo "[INFO] Cleaning previous jobs"
-                            kubectl delete job my-app-job -n ${NAMESPACE} --ignore-not-found=true
+                            kubectl wait --for=condition=complete job/my-app-job -n dev --timeout=60s
 
-                            echo "[INFO] Deploying Kubernetes Job"
-                            kubectl apply -f k8s/job.yaml -n ${NAMESPACE}
-
-                            echo "[INFO] Waiting for job to complete..."
-                            kubectl wait --for=condition=complete job/my-app-job -n ${NAMESPACE} --timeout=60s
-
-                            echo "[INFO] Showing Pod Logs..."
-                            POD=\$(kubectl get pod -l app=my-app -n ${NAMESPACE} -o jsonpath="{.items[0].metadata.name}")
-                            kubectl logs \$POD -n ${NAMESPACE}
+                            POD=\$(kubectl get pod -l app=my-app -n dev -o jsonpath="{.items[0].metadata.name}")
+                            kubectl logs \$POD -n dev
                         EOF
                     """
                 }
             }
         }
 
-        stage('Verify Minikube Health') {
+        stage('Minikube Health Check') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
                     keyFileVariable: 'SSH_KEY')]) {
 
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@${EC2_HOST} << 'EOF'
-                            echo "[INFO] === Minikube Status ==="
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_USER}@13.213.x.x << 'EOF'
                             minikube status
-
-                            echo "[INFO] === Kubernetes Nodes ==="
                             kubectl get nodes -o wide
-
-                            echo "[INFO] === Dev Namespace Pods ==="
                             kubectl get pods -n dev -o wide
                         EOF
                     """
@@ -142,10 +100,10 @@ pipeline {
 
     post {
         success {
-            echo "🚀 Minikube CI/CD Deployment Successful!"
+            echo "Minikube pipeline completed successfully!"
         }
         failure {
-            echo "❌ Deployment failed — check above logs."
+            echo "Minikube deployment failed!"
         }
     }
 }
