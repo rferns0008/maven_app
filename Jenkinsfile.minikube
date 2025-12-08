@@ -4,9 +4,11 @@ pipeline {
     environment {
         EC2_USER   = "ubuntu"
         REMOTE_DIR = "/home/ubuntu/maven_app"
+
         IMAGE_REPO = "rferns/maven-app"
-        IMAGE_TAG  = "${env.BUILD_NUMBER}"
-        APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}-k8s"
+        IMAGE_TAG  = "${env.BUILD_NUMBER}-k8s"
+        APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}"
+
         NAMESPACE  = "dev"
         EC2_HOST   = ""
     }
@@ -14,14 +16,10 @@ pipeline {
     stages {
 
         /* --------------------------------------------------------------- */
-        /*  CHECKOUT                                                       */
-        /* --------------------------------------------------------------- */
         stage('Checkout Code') {
             steps { checkout scm }
         }
 
-        /* --------------------------------------------------------------- */
-        /*  READ TARGET EC2 IP                                             */
         /* --------------------------------------------------------------- */
         stage('Read EC2 IP from hosts.ini') {
             steps {
@@ -32,30 +30,45 @@ pipeline {
                     ).trim()
 
                     if (!EC2_HOST) { error("No valid EC2 IP in ansible/hosts.ini") }
-
                     echo "Using Minikube host: ${EC2_HOST}"
                 }
             }
         }
 
         /* --------------------------------------------------------------- */
-        /*  BUILD MAVEN APP LOCALLY                                        */
-        /* --------------------------------------------------------------- */
         stage('Build Maven App Locally') {
-            steps {
-                sh "mvn clean package -DskipTests"
-            }
+            steps { sh "mvn clean package -DskipTests" }
         }
 
         /* --------------------------------------------------------------- */
-        /*  RENDER job.yaml FROM TEMPLATE                                  */
+        stage('Build & Push Docker Image to DockerHub') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'dockerhub-creds',
+                                     usernameVariable: 'DOCKERHUB_USERNAME',
+                                     passwordVariable: 'DOCKERHUB_PASSWORD')
+                ]) {
+                    sh '''
+                        echo "[LOCAL] Building Docker image..."
+                        docker build -t ${IMAGE_REPO}:${IMAGE_TAG} -f Dockerfile.minikube .
+
+                        echo "[LOCAL] Logging into DockerHub..."
+                        echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+                        echo "[LOCAL] Pushing image to DockerHub..."
+                        docker push ${IMAGE_REPO}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+
         /* --------------------------------------------------------------- */
         stage('Render job.yaml') {
             steps {
                 sh '''
                     mkdir -p deploy_package/k8s
 
-                    sed "s#__IMAGE_TAG__#${IMAGE_TAG}#g" k8s/job.yaml.template \
+                    sed "s#__IMAGE_TAG__#${APP_IMAGE}#g" k8s/job.yaml.template \
                         > deploy_package/k8s/job.yaml
 
                     echo "[INFO] --- job.yaml rendered ---"
@@ -65,26 +78,18 @@ pipeline {
         }
 
         /* --------------------------------------------------------------- */
-        /*  CREATE DEPLOYMENT PACKAGE                                      */
-        /* --------------------------------------------------------------- */
         stage('Prepare Deployment Package') {
             steps {
                 sh '''
                     rm -rf deploy_package || true
                     mkdir -p deploy_package/k8s
 
-                    cp Dockerfile.minikube deploy_package/
                     cp -r k8s/* deploy_package/k8s/
                     cp target/*.jar deploy_package/ || true
-
-                    echo "[INFO] Deployment package contents:"
-                    ls -R deploy_package
                 '''
             }
         }
 
-        /* --------------------------------------------------------------- */
-        /*  COPY TO REMOTE EC2                                             */
         /* --------------------------------------------------------------- */
         stage('Copy Package to EC2') {
             steps {
@@ -93,64 +98,41 @@ pipeline {
                 ]) {
                     sh '''
                         rsync -avz -e "ssh -o StrictHostKeyChecking=no -i $SSH_KEY" \
-                            deploy_package/ ''' + "${EC2_USER}@${EC2_HOST}" + ''':${REMOTE_DIR}/
+                            deploy_package/ ${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/
                     '''
                 }
             }
         }
 
         /* --------------------------------------------------------------- */
-        /*  REMOTE BUILD + MINIKUBE DEPLOYMENT                             */
+        /*      PULL DOCKERHUB IMAGE & DEPLOY TO MINIKUBE                  */
         /* --------------------------------------------------------------- */
-        stage('Build Image + Deploy to Minikube (remote)') {
+        stage('Deploy to Minikube') {
             steps {
                 withCredentials([
                     sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
                 ]) {
-                    
-		     echo "DEBUG: Deploying to EC2_HOST=${EC2_HOST}"
 
-                     sh '''
-                        
-			ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'REMOTE_EOF'
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'REMOTE_EOF'
                             set -xeuo pipefail
                             cd ''' + "${REMOTE_DIR}" + '''
 
-                            echo "[REMOTE] Checking Minikube status..."
-                            minikube status || true
-
-                            echo "[REMOTE] Attempting to switch to Minikube Docker..."
-                            if eval "$(minikube docker-env)" ; then
-                                echo "[REMOTE] Using Minikube Docker daemon"
-                                docker build -t ''' + "${APP_IMAGE}" + ''' -f Dockerfile.minikube .
-                            else
-                                echo "[REMOTE] FAILED to use Minikube Docker."
-                                echo "[REMOTE] Building image locally..."
-                                docker build -t ''' + "${APP_IMAGE}" + ''' -f Dockerfile.minikube .
-
-                                echo "[REMOTE] Saving image to tarball..."
-                                docker save ''' + "${APP_IMAGE}" + ''' -o app_image.tar
-
-                                echo "[REMOTE] Loading saved tarball into Minikube..."
-                                minikube image load app_image.tar
-                            fi
-
-                            echo "[REMOTE] Validating image inside Minikube..."
-                            eval "$(minikube docker-env)"
-                            docker images | grep rferns || echo "[WARN] Image missing in Minikube"
+                            echo "[REMOTE] Pulling image from DockerHub into Minikube..."
+                            minikube image pull ''' + "${APP_IMAGE}" + '''
 
                             echo "[REMOTE] Applying namespace + RBAC"
-                            kubectl apply -f ''' + "${REMOTE_DIR}" + '''/k8s/namespaces.yaml
-                            kubectl apply -f ''' + "${REMOTE_DIR}" + '''/k8s/rbac/sa-role-dev.yaml
+                            kubectl apply -f k8s/namespaces.yaml
+                            kubectl apply -f k8s/rbac/sa-role-dev.yaml
 
-                            echo "[REMOTE] Deploying job"
+                            echo "[REMOTE] Deploying job..."
                             kubectl delete job my-app-job -n ''' + "${NAMESPACE}" + ''' --ignore-not-found=true
-                            kubectl apply -f ''' + "${REMOTE_DIR}" + '''/k8s/job.yaml -n ''' + "${NAMESPACE}" + '''
+                            kubectl apply -f k8s/job.yaml -n ''' + "${NAMESPACE}" + '''
 
-                            echo "[REMOTE] Waiting for job..."
+                            echo "[REMOTE] Waiting for job completion..."
                             kubectl wait --for=condition=complete job/my-app-job -n ''' + "${NAMESPACE}" + ''' --timeout=60s || true
 
-                            echo "[REMOTE] Pod list:"
+                            echo "[REMOTE] Pods:"
                             kubectl get pods -n ''' + "${NAMESPACE}" + ''' -o wide
 
                             POD=$(kubectl get pod -l job-name=my-app-job -n ''' + "${NAMESPACE}" + ''' -o jsonpath="{.items[0].metadata.name}" || true)
@@ -159,16 +141,12 @@ pipeline {
                                 kubectl logs "$POD" -n ''' + "${NAMESPACE}" + '''
                             fi
 
-                            echo "[REMOTE] Minikube Logs:"
-                            minikube logs | tail -n 150 || true
 REMOTE_EOF
                     '''
                 }
             }
         }
 
-        /* --------------------------------------------------------------- */
-        /*  HEALTH CHECK                                                    */
         /* --------------------------------------------------------------- */
         stage('Minikube Health Check') {
             steps {
@@ -177,11 +155,13 @@ REMOTE_EOF
                 ]) {
                     sh '''
                         ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'EOF'
-                            echo "=== Minikube Status ==="
+                            echo "--- Minikube Status ---"
                             minikube status || true
-                            echo "=== Nodes ==="
+
+                            echo "--- Nodes ---"
                             kubectl get nodes -o wide || true
-                            echo "=== Pods (dev) ==="
+
+                            echo "--- Pods (dev) ---"
                             kubectl get pods -n dev -o wide || true
 EOF
                     '''

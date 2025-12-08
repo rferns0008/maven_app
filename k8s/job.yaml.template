@@ -1,3 +1,4 @@
+ubuntu@ip-10-0-0-140:~/project/git/maven_app/k8s$ cat job.yaml.template
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -8,5 +9,5 @@ spec:
       containers:
       - name: myapp-container
         image: rferns/maven-app:__IMAGE_TAG__-k8s
-	imagePullPolicy: Never
+        imagePullPolicy: Never
       restartPolicy: Never
