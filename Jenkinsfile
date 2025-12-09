@@ -9,25 +9,27 @@ pipeline {
         ANSIBLE_PLAY = "./ansible/deploy.yml"
         ANSIBLE_INV  = "./ansible/hosts.ini"
 
-        EC2_HOST = ""
+        EC2_HOST = ""   // dynamically populated
     }
 
     stages {
 
+        /* --------------------------------------------------------------- */
         stage('Checkout Code') {
             steps { checkout scm }
         }
 
+        /* --------------------------------------------------------------- */
         stage('Read EC2 IP from hosts.ini') {
             steps {
                 script {
                     EC2_HOST = sh(
-                        script: "grep -Eo '^[0-9]{1,3}(\\.[0-9]{1,3}){3}' ansible/hosts.ini | head -1",
+                        script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ansible/hosts.ini | head -1",
                         returnStdout: true
                     ).trim()
 
                     if (!EC2_HOST) {
-                        error("No valid IP found in ansible/hosts.ini")
+                        error("ERROR: No valid IP found in ansible/hosts.ini")
                     }
 
                     echo "Using EC2 host: ${EC2_HOST}"
@@ -35,18 +37,21 @@ pipeline {
             }
         }
 
+        /* --------------------------------------------------------------- */
         stage('Build Maven App') {
             steps {
                 sh "mvn clean package -DskipTests"
             }
         }
 
+        /* --------------------------------------------------------------- */
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${FULL_IMAGE} ."
             }
         }
 
+        /* --------------------------------------------------------------- */
         stage('Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(
@@ -64,6 +69,7 @@ pipeline {
             }
         }
 
+        /* --------------------------------------------------------------- */
         stage('Deploy via Ansible') {
             steps {
                 withCredentials([sshUserPrivateKey(
@@ -73,6 +79,8 @@ pipeline {
 
                     sh """
                         export ANSIBLE_HOST_KEY_CHECKING=False
+
+                        # Prepare SSH key for Ansible
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
 
@@ -87,7 +95,7 @@ pipeline {
     }
 
     post {
-        success { echo "Docker pipeline completed successfully: ${FULL_IMAGE}" }
-        failure { echo "Docker pipeline failed — check logs." }
+        success { echo "Docker EC2 pipeline completed successfully: ${FULL_IMAGE}" }
+        failure { echo "Docker EC2 pipeline failed — check logs." }
     }
 }

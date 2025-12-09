@@ -10,17 +10,19 @@ pipeline {
         APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}"
 
         NAMESPACE  = "dev"
-        EC2_HOST   = "54.255.183.6"
+        EC2_HOST   = ""   // placeholder, dynamically filled below
     }
 
     stages {
 
-        /* --------------------------------------------------------------- */
+        /* --------------------------- CHECKOUT --------------------------- */
         stage('Checkout Code') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
         }
 
-        /* --------------------------------------------------------------- */
+        /* -------------------- READ TARGET IP FROM hosts.ini -------------- */
         stage('Read EC2 IP from hosts.ini') {
             steps {
                 script {
@@ -29,24 +31,29 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    if (!EC2_HOST) { error("No valid EC2 IP in ansible/hosts.ini") }
-                    echo "Using Minikube host: ${EC2_HOST}"
+                    if (!EC2_HOST) {
+                        error("ERROR: No valid EC2 IP found in ansible/hosts.ini")
+                    }
+
+                    echo "Using EC2_HOST = ${EC2_HOST}"
                 }
             }
         }
 
-        /* --------------------------------------------------------------- */
+        /* ------------------- BUILD MAVEN APP ---------------------------- */
         stage('Build Maven App Locally') {
-            steps { sh "mvn clean package -DskipTests" }
+            steps {
+                sh "mvn clean package -DskipTests"
+            }
         }
 
-        /* --------------------------------------------------------------- */
+        /* ------------------- BUILD & PUSH DOCKER IMAGE ------------------ */
         stage('Build & Push Docker Image to DockerHub') {
             steps {
                 withCredentials([
                     usernamePassword(credentialsId: 'dockerhub-creds',
-                                     usernameVariable: 'DOCKERHUB_USERNAME',
-                                     passwordVariable: 'DOCKERHUB_PASSWORD')
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD')
                 ]) {
                     sh '''
                         echo "[LOCAL] Building Docker image..."
@@ -62,7 +69,7 @@ pipeline {
             }
         }
 
-        /* --------------------------------------------------------------- */
+        /* -------------------- RENDER job.yaml --------------------------- */
         stage('Render job.yaml') {
             steps {
                 sh '''
@@ -71,26 +78,13 @@ pipeline {
                     sed "s#__IMAGE_TAG__#${APP_IMAGE}#g" k8s/job.yaml.template \
                         > deploy_package/k8s/job.yaml
 
-                    echo "[INFO] --- job.yaml rendered ---"
+                    echo "[INFO] Rendered job.yaml:"
                     cat deploy_package/k8s/job.yaml
                 '''
             }
         }
 
-        /* --------------------------------------------------------------- */
-        stage('Prepare Deployment Package') {
-            steps {
-                sh '''
-                    rm -rf deploy_package || true
-                    mkdir -p deploy_package/k8s
-
-                    cp -r k8s/* deploy_package/k8s/
-                    cp target/*.jar deploy_package/ || true
-                '''
-            }
-        }
-
-        /* --------------------------------------------------------------- */
+        /* --------------------- COPY PACKAGE TO EC2 ---------------------- */
         stage('Copy Package to EC2') {
             steps {
                 withCredentials([
@@ -104,65 +98,39 @@ pipeline {
             }
         }
 
-        /* --------------------------------------------------------------- */
-        /*      PULL DOCKERHUB IMAGE & DEPLOY TO MINIKUBE                  */
-        /* --------------------------------------------------------------- */
+        /* ------------------ DEPLOY TO MINIKUBE ON EC2 ------------------ */
         stage('Deploy to Minikube') {
             steps {
                 withCredentials([
                     sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
                 ]) {
-
                     sh '''
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'REMOTE_EOF'
+                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${EC2_USER}@${EC2_HOST} bash -s <<'EOF'
                             set -xeuo pipefail
-                            cd ''' + "${REMOTE_DIR}" + '''
+                            cd ${REMOTE_DIR}
 
-                            echo "[REMOTE] Pulling image from DockerHub into Minikube..."
-                            minikube image pull ''' + "${APP_IMAGE}" + '''
+                            echo "[REMOTE] Pulling image into Minikube..."
+                            minikube image pull ${APP_IMAGE}
 
-                            echo "[REMOTE] Applying namespace + RBAC"
+                            echo "[REMOTE] Applying namespace and RBAC..."
                             kubectl apply -f k8s/namespaces.yaml
                             kubectl apply -f k8s/rbac/sa-role-dev.yaml
 
                             echo "[REMOTE] Deploying job..."
-                            kubectl delete job my-app-job -n ''' + "${NAMESPACE}" + ''' --ignore-not-found=true
-                            kubectl apply -f k8s/job.yaml -n ''' + "${NAMESPACE}" + '''
+                            kubectl delete job my-app-job -n ${NAMESPACE} --ignore-not-found=true
+                            kubectl apply -f k8s/job.yaml -n ${NAMESPACE}
 
-                            echo "[REMOTE] Waiting for job completion..."
-                            kubectl wait --for=condition=complete job/my-app-job -n ''' + "${NAMESPACE}" + ''' --timeout=60s || true
+                            echo "[REMOTE] Waiting for job..."
+                            kubectl wait --for=condition=complete job/my-app-job -n ${NAMESPACE} --timeout=60s || true
 
-                            echo "[REMOTE] Pods:"
-                            kubectl get pods -n ''' + "${NAMESPACE}" + ''' -o wide
+                            echo "[REMOTE] Pod list:"
+                            kubectl get pods -n ${NAMESPACE} -o wide
 
-                            POD=$(kubectl get pod -l job-name=my-app-job -n ''' + "${NAMESPACE}" + ''' -o jsonpath="{.items[0].metadata.name}" || true)
+                            POD=\$(kubectl get pod -l job-name=my-app-job -n ${NAMESPACE} -o jsonpath="{.items[0].metadata.name}" || true)
                             if [ -n "$POD" ]; then
-                                echo "[REMOTE] Logs from pod: $POD"
-                                kubectl logs "$POD" -n ''' + "${NAMESPACE}" + '''
+                                echo "[REMOTE] Logs from pod: \$POD"
+                                kubectl logs "\$POD" -n ${NAMESPACE}
                             fi
-
-REMOTE_EOF
-                    '''
-                }
-            }
-        }
-
-        /* --------------------------------------------------------------- */
-        stage('Minikube Health Check') {
-            steps {
-                withCredentials([
-                    sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
-                ]) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ''' + "${EC2_USER}@${EC2_HOST}" + ''' bash -s <<'EOF'
-                            echo "--- Minikube Status ---"
-                            minikube status || true
-
-                            echo "--- Nodes ---"
-                            kubectl get nodes -o wide || true
-
-                            echo "--- Pods (dev) ---"
-                            kubectl get pods -n dev -o wide || true
 EOF
                     '''
                 }
@@ -171,7 +139,7 @@ EOF
     }
 
     post {
-        success { echo "Minikube pipeline completed successfully!" }
-        failure { echo "Minikube pipeline failed!" }
+        success { echo "Minikube deployment completed successfully!" }
+        failure { echo "Minikube deployment failed!" }
     }
 }
