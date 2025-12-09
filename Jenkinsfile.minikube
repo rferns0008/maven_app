@@ -10,7 +10,7 @@ pipeline {
         APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}"
 
         NAMESPACE  = "dev"
-        EC2_HOST   = ""   // placeholder, dynamically filled below
+        EC2_HOST   = "54.255.183.6"   // placeholder, dynamically filled below
     }
 
     stages {
