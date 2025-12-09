@@ -87,7 +87,7 @@ pipeline {
                     sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
                 ]) {
                     sh '''
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${EC2_USER}@${EC2_HOST} bash -s <<'EOF'
+                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${EC2_USER}@${EC2_HOST} bash -s <<EOF
                             set -xeuo pipefail
                             cd ${REMOTE_DIR}
 
