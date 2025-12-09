@@ -10,7 +10,7 @@ pipeline {
         APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}"
 
         NAMESPACE  = "dev"
-        EC2_HOST   = "54.255.183.6"   // placeholder, dynamically filled below
+        EC2_HOST   = "54.255.183.6"
     }
 
     stages {
@@ -87,32 +87,33 @@ pipeline {
                     sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')
                 ]) {
                     sh '''
-                        ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${EC2_USER}@${EC2_HOST} bash -s <<EOF
-                            set -xeuo pipefail
-                            cd ${REMOTE_DIR}
+ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ${EC2_USER}@${EC2_HOST} bash -s <<EOF
+set -xeuo pipefail
 
-                            echo "[REMOTE] Pulling image into Minikube..."
-                            minikube image pull ${APP_IMAGE}
+cd ${REMOTE_DIR}
 
-                            echo "[REMOTE] Applying namespace and RBAC..."
-                            kubectl apply -f k8s/namespaces.yaml
-                            kubectl apply -f k8s/rbac/sa-role-dev.yaml
+echo "[REMOTE] Pulling image into Minikube..."
+minikube image pull ${APP_IMAGE}
 
-                            echo "[REMOTE] Deploying job..."
-                            kubectl delete job my-app-job -n ${NAMESPACE} --ignore-not-found=true
-                            kubectl apply -f k8s/job.yaml -n ${NAMESPACE}
+echo "[REMOTE] Applying namespace and RBAC..."
+kubectl apply -f k8s/namespaces.yaml
+kubectl apply -f k8s/rbac/sa-role-dev.yaml
 
-                            echo "[REMOTE] Waiting for job..."
-                            kubectl wait --for=condition=complete job/my-app-job -n ${NAMESPACE} --timeout=60s || true
+echo "[REMOTE] Deploying job..."
+kubectl delete job my-app-job -n ${NAMESPACE} --ignore-not-found=true
+kubectl apply -f k8s/job.yaml -n ${NAMESPACE}
 
-                            echo "[REMOTE] Pod list:"
-                            kubectl get pods -n ${NAMESPACE} -o wide
+echo "[REMOTE] Waiting for job to complete..."
+kubectl wait --for=condition=complete job/my-app-job -n ${NAMESPACE} --timeout=60s || true
 
-                            POD=\$(kubectl get pod -l job-name=my-app-job -n ${NAMESPACE} -o jsonpath="{.items[0].metadata.name}" || true)
-                            if [ -n "$POD" ]; then
-                                echo "[REMOTE] Logs from pod: \$POD"
-                                kubectl logs "\$POD" -n ${NAMESPACE}
-                            fi
+echo "[REMOTE] Pod list:"
+kubectl get pods -n ${NAMESPACE} -o wide
+
+POD=$(kubectl get pod -l job-name=my-app-job -n ${NAMESPACE} -o jsonpath="{.items[0].metadata.name}" || true)
+if [ -n "$POD" ]; then
+    echo "[REMOTE] Logs from pod: $POD"
+    kubectl logs "$POD" -n ${NAMESPACE}
+fi
 EOF
                     '''
                 }
@@ -125,3 +126,4 @@ EOF
         failure { echo "Minikube deployment failed!" }
     }
 }
+
