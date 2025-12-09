@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         EC2_USER   = "ubuntu"
-	EC2_HOST = "54.255.183.6"
         REMOTE_DIR = "/home/ubuntu/maven_app"
 
         IMAGE_REPO = "rferns/maven-app"
@@ -11,7 +10,7 @@ pipeline {
         APP_IMAGE  = "${IMAGE_REPO}:${IMAGE_TAG}"
 
         NAMESPACE  = "dev"
-        EC2_HOST   = ""
+        EC2_HOST   = "54.255.183.6"
     }
 
     stages {
