@@ -9,5 +9,5 @@ spec:
       containers:
       - name: myapp-container
         image: rferns/maven-app:__IMAGE_TAG__-k8s
-        imagePullPolicy: Never
-      restartPolicy: Never
+        imagePullPolicy: IfNotPresent
+      restartPolicy: Always
