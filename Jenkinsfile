@@ -78,12 +78,12 @@ pipeline {
         stage('Read EC2 IP from hosts.ini') {
             steps {
                 script {
-                    EC2_HOST = sh(
+                    env.EC2_HOST = sh(
                         script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ${ANSIBLE_INV} | head -1",
                         returnStdout: true
                     ).trim()
 
-                    if (!EC2_HOST) {
+                    if (!env.EC2_HOST) {
                         error("ERROR: No valid IP found inside ${ANSIBLE_INV}")
                     }
 
