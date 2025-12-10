@@ -20,6 +20,27 @@ pipeline {
             steps { checkout scm }
         }
 
+	stage('Debug Workspace') {
+    	    steps {
+        	sh """
+            	   echo '=== DEBUG: WORKSPACE PATH ==='
+                   pwd
+
+            	echo '=== DEBUG: GIT TOP LEVEL ==='
+            	git rev-parse --show-toplevel || true
+
+            	echo '=== DEBUG: ROOT DIRECTORY CONTENTS ==='
+            	ls -la
+
+            	echo '=== DEBUG: RECURSIVE LISTING ==='
+            	ls -R .
+
+            	echo '=== DEBUG: SEARCHING FOR hosts.ini ==='
+            	find . -type f -name 'hosts.ini' -print || true
+        	"""
+    }
+}
+
         /* --------------------------------------------------------------- */
         /*  FIND hosts.ini ANYWHERE in the workspace                       */
         /* --------------------------------------------------------------- */
