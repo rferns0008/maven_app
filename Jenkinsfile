@@ -6,8 +6,8 @@ pipeline {
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         FULL_IMAGE = "${IMAGE_REPO}:${IMAGE_TAG}"
 
-        ANSIBLE_PLAY = "./ansible/deploy.yml"
-        ANSIBLE_INV  = ""    // dynamically located
+        // ANSIBLE_PLAY = "./ansible/deploy.yml"
+        // ANSIBLE_INV  = ""    // dynamically located
         EC2_HOST     = ""    // extracted from hosts.ini
     }
 
@@ -56,11 +56,11 @@ pipeline {
 
                     if (!hostsFile) {
                         error("""
-ERROR: hosts.ini not found anywhere in workspace!
+		        ERROR: hosts.ini not found anywhere in workspace!
 
-Expected a file like:
-/var/lib/jenkins/workspace/<job>/ansible/hosts.ini
-""")
+     			Expected a file like:
+			/var/lib/jenkins/workspace/<job>/ansible/hosts.ini
+			""")
                     }
 
                     env.ANSIBLE_INV = hostsFile
