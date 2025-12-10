@@ -79,7 +79,7 @@ pipeline {
             steps {
                 script {
 		   env.EC2_HOST = sh(
-			script: "grep -Eo [0-9]{1,3}(\\.[0-9]{1,3}){3} ${ANSIBLE_INV} | head -1",
+			script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ${ANSIBLE_INV} | head -1",
     			returnStdout: true
 		    ).trim()
 
