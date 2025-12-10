@@ -6,11 +6,9 @@ pipeline {
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         FULL_IMAGE = "${IMAGE_REPO}:${IMAGE_TAG}"
 
-        ANSIBLE_PLAY = "ansible/deploy.yml"
-
-        // Will be discovered dynamically (no hardcoded IP)
-        ANSIBLE_INV  = ""
-        EC2_HOST     = ""
+        ANSIBLE_PLAY = "./ansible/deploy.yml"
+        ANSIBLE_INV  = ""    // dynamically located
+        EC2_HOST     = ""    // extracted from hosts.ini
     }
 
     stages {
@@ -20,82 +18,92 @@ pipeline {
             steps { checkout scm }
         }
 
-	stage('Debug Workspace') {
-    	    steps {
-        	sh """
-            	   echo '=== DEBUG: WORKSPACE PATH ==='
-                   pwd
-
-            	echo '=== DEBUG: GIT TOP LEVEL ==='
-            	git rev-parse --show-toplevel || true
-
-            	echo '=== DEBUG: ROOT DIRECTORY CONTENTS ==='
-            	ls -la
-
-            	echo '=== DEBUG: RECURSIVE LISTING ==='
-            	ls -R .
-
-            	echo '=== DEBUG: SEARCHING FOR hosts.ini ==='
-            	find . -type f -name 'hosts.ini' -print || true
-        	"""
-    }
-}
-
         /* --------------------------------------------------------------- */
-        /*  FIND hosts.ini ANYWHERE in the workspace                       */
+        /* DEBUG WORKSPACE STRUCTURE                                       */
         /* --------------------------------------------------------------- */
-	stage('Locate hosts.ini') {
-    	    steps {
-        	script {
-            	    sh "echo '=== DEBUG: FINDING hosts.ini IN WORKSPACE ==='; pwd; ls -R ."
+        stage('Debug Workspace') {
+            steps {
+                sh """
+                    echo "=== DEBUG: WORKSPACE PATH ==="
+                    pwd
 
-            	    def hostsFile = sh(
-                	script: "find . -type f -name 'hosts.ini' | head -1",
-                	returnStdout: true
-            	    ).trim()
+                    echo "=== DEBUG: ROOT CONTENTS ==="
+                    ls -la
 
-            	    if (!hostsFile) {
-               	        error("""
-		        ERROR: hosts.ini not found anywhere in workspace!
-                        """)
+                    echo "=== DEBUG: RECURSIVE LISTING ==="
+                    ls -R .
+
+                    echo "=== DEBUG: SEARCHING FOR hosts.ini ==="
+                    find . -type f -name 'hosts.ini' -print || true
+                """
             }
-
-            env.ANSIBLE_INV = hostsFile
-            echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
         }
-    }
-}
 
         /* --------------------------------------------------------------- */
-        /*  READ EC2 IP FROM ansible/hosts.ini                             */
+        /* LOCATE hosts.ini ANYWHERE IN WORKSPACE                          */
         /* --------------------------------------------------------------- */
-        stage('Extract EC2 IP') {
+        stage('Locate hosts.ini') {
             steps {
                 script {
-                    sh "echo '=== Parsing IP from: ${env.ANSIBLE_INV} ==='; cat ${env.ANSIBLE_INV}"
+                    echo "=== Locating hosts.ini in workspace ==="
 
+                    def hostsFile = sh(
+                        script: "find ${WORKSPACE} -type f -name 'hosts.ini' | head -1",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "DEBUG: hostsFile='${hostsFile}'"
+
+                    if (!hostsFile) {
+                        error("""
+ERROR: hosts.ini not found anywhere in workspace!
+
+Expected a file like:
+/var/lib/jenkins/workspace/<job>/ansible/hosts.ini
+""")
+                    }
+
+                    env.ANSIBLE_INV = hostsFile
+                    echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
+
+                    echo "=== hosts.ini contents ==="
+                    sh "cat ${env.ANSIBLE_INV}"
+                }
+            }
+        }
+
+        /* --------------------------------------------------------------- */
+        /* EXTRACT EC2 IP FROM hosts.ini                                   */
+        /* --------------------------------------------------------------- */
+        stage('Read EC2 IP from hosts.ini') {
+            steps {
+                script {
                     EC2_HOST = sh(
-                        script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ${env.ANSIBLE_INV} | head -1",
+                        script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ${ANSIBLE_INV} | head -1",
                         returnStdout: true
                     ).trim()
 
                     if (!EC2_HOST) {
-                        error("ERROR: No valid IP found in ${env.ANSIBLE_INV}")
+                        error("ERROR: No valid IP found inside ${ANSIBLE_INV}")
                     }
 
-                    echo "Using EC2 Host: ${EC2_HOST}"
+                    echo "Using EC2 host: ${EC2_HOST}"
                 }
             }
         }
 
         /* --------------------------------------------------------------- */
         stage('Build Maven App') {
-            steps { sh "mvn clean package -DskipTests" }
+            steps {
+                sh "mvn clean package -DskipTests"
+            }
         }
 
         /* --------------------------------------------------------------- */
         stage('Build Docker Image') {
-            steps { sh "docker build -t ${FULL_IMAGE} ." }
+            steps {
+                sh "docker build -t ${FULL_IMAGE} ."
+            }
         }
 
         /* --------------------------------------------------------------- */
@@ -130,9 +138,8 @@ pipeline {
                     sh """
                         export ANSIBLE_HOST_KEY_CHECKING=False
 
-                        echo "Deploying to host: ${EC2_HOST}"
+                        echo "Deploying to: ${EC2_HOST}"
 
-                        # Prepare SSH key for Ansible
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
 
@@ -147,7 +154,7 @@ pipeline {
     }
 
     post {
-        success { echo "SUCCESS — Docker EC2 Deployment Completed: ${FULL_IMAGE}" }
-        failure { echo "DEPLOYMENT FAILED — Check logs." }
+        success { echo "SUCCESS — Docker pipeline completed: ${FULL_IMAGE}" }
+        failure { echo "FAILED — check logs." }
     }
 }
