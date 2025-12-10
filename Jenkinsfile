@@ -23,33 +23,27 @@ pipeline {
         /* --------------------------------------------------------------- */
         /*  FIND hosts.ini ANYWHERE in the workspace                       */
         /* --------------------------------------------------------------- */
-        stage('Locate hosts.ini') {
-            steps {
-                script {
-                    sh "echo '=== DEBUG: Workspace Contents ==='; ls -R ${WORKSPACE}"
+	stage('Locate hosts.ini') {
+    	    steps {
+        	script {
+            	    sh "echo '=== DEBUG: FINDING hosts.ini IN WORKSPACE ==='; pwd; ls -R ."
 
-                    // Finds hosts.ini anywhere in the repo
-                    def hostsFile = sh(
-                        script: "find ${WORKSPACE} -type f -name 'hosts.ini' | head -1",
-                        returnStdout: true
-                    ).trim()
+            	    def hostsFile = sh(
+                	script: "find . -type f -name 'hosts.ini' | head -1",
+                	returnStdout: true
+            	    ).trim()
 
-                    if (!hostsFile) {
-                        error("""
-ERROR: hosts.ini not found in workspace!
-Expected format:
-  [target]
-  <IP> ansible_user=ubuntu
-
-Fix your repo structure or hosts.ini path.
-""")
-                    }
-
-                    env.ANSIBLE_INV = hostsFile
-                    echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
-                }
+            	    if (!hostsFile) {
+               	        error("""
+		        ERROR: hosts.ini not found anywhere in workspace!
+                        """)
             }
+
+            env.ANSIBLE_INV = hostsFile
+            echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
         }
+    }
+}
 
         /* --------------------------------------------------------------- */
         /*  READ EC2 IP FROM ansible/hosts.ini                             */
