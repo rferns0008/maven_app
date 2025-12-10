@@ -7,85 +7,91 @@ pipeline {
         FULL_IMAGE = "${IMAGE_REPO}:${IMAGE_TAG}"
 
         ANSIBLE_PLAY = "ansible/deploy.yml"
-        ANSIBLE_INV  = "ansible/hosts.ini"
 
-        EC2_HOST = ""   // will be filled dynamically
+        // Will be discovered dynamically (no hardcoded IP)
+        ANSIBLE_INV  = ""
+        EC2_HOST     = ""
     }
 
     stages {
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
         stage('Checkout Code') {
             steps { checkout scm }
         }
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
+        /*  FIND hosts.ini ANYWHERE in the workspace                       */
+        /* --------------------------------------------------------------- */
         stage('Locate hosts.ini') {
             steps {
                 script {
-                    sh "echo '=== DEBUG: WORKSPACE CONTENTS ===' && ls -R ${WORKSPACE}"
+                    sh "echo '=== DEBUG: Workspace Contents ==='; ls -R ${WORKSPACE}"
 
-                    // Search for hosts.ini anywhere in the workspace
-                    def foundFile = sh(
+                    // Finds hosts.ini anywhere in the repo
+                    def hostsFile = sh(
                         script: "find ${WORKSPACE} -type f -name 'hosts.ini' | head -1",
                         returnStdout: true
                     ).trim()
 
-                    if (!foundFile) {
+                    if (!hostsFile) {
                         error("""
-ERROR: hosts.ini not found anywhere in workspace!
+ERROR: hosts.ini not found in workspace!
+Expected format:
+  [target]
+  <IP> ansible_user=ubuntu
 
-Expected one:
- - ${WORKSPACE}/ansible/hosts.ini
- - ${WORKSPACE}/maven_app/ansible/hosts.ini
-
-Fix your repo structure OR update Jenkinsfile paths.
+Fix your repo structure or hosts.ini path.
 """)
                     }
 
-                    env.ANSIBLE_INV = foundFile
+                    env.ANSIBLE_INV = hostsFile
                     echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
                 }
             }
         }
 
-        /* ---------------------------------------------------------- */
-        stage('Read EC2 IP from hosts.ini') {
+        /* --------------------------------------------------------------- */
+        /*  READ EC2 IP FROM ansible/hosts.ini                             */
+        /* --------------------------------------------------------------- */
+        stage('Extract EC2 IP') {
             steps {
                 script {
-                    echo "Reading EC2 IP from: ${env.ANSIBLE_INV}"
+                    sh "echo '=== Parsing IP from: ${env.ANSIBLE_INV} ==='; cat ${env.ANSIBLE_INV}"
 
                     EC2_HOST = sh(
                         script: "grep -Eo '[0-9]{1,3}(\\.[0-9]{1,3}){3}' ${env.ANSIBLE_INV} | head -1",
                         returnStdout: true
                     ).trim()
 
-                    echo "DEBUG: Extracted EC2_HOST='${EC2_HOST}'"
-
                     if (!EC2_HOST) {
-                        error("ERROR: No valid IP found inside ${env.ANSIBLE_INV}")
+                        error("ERROR: No valid IP found in ${env.ANSIBLE_INV}")
                     }
+
+                    echo "Using EC2 Host: ${EC2_HOST}"
                 }
             }
         }
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
         stage('Build Maven App') {
             steps { sh "mvn clean package -DskipTests" }
         }
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
         stage('Build Docker Image') {
             steps { sh "docker build -t ${FULL_IMAGE} ." }
         }
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
         stage('Push Docker Image') {
             steps {
                 withCredentials([
-                    usernamePassword(credentialsId: 'dockerhub-creds',
-                                     usernameVariable: 'DC_USER',
-                                     passwordVariable: 'DC_PASS')
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DC_USER',
+                        passwordVariable: 'DC_PASS'
+                    )
                 ]) {
                     sh """
                         echo "$DC_PASS" | docker login -u "$DC_USER" --password-stdin
@@ -96,20 +102,22 @@ Fix your repo structure OR update Jenkinsfile paths.
             }
         }
 
-        /* ---------------------------------------------------------- */
+        /* --------------------------------------------------------------- */
         stage('Deploy via Ansible') {
             steps {
                 withCredentials([
-                    sshUserPrivateKey(credentialsId: 'ansible-ssh-key',
-                                      keyFileVariable: 'SSH_KEY')
+                    sshUserPrivateKey(
+                        credentialsId: 'ansible-ssh-key',
+                        keyFileVariable: 'SSH_KEY'
+                    )
                 ]) {
 
                     sh """
-                        echo "=== Running Ansible Deployment ==="
-
                         export ANSIBLE_HOST_KEY_CHECKING=False
 
-                        # Prepare SSH key
+                        echo "Deploying to host: ${EC2_HOST}"
+
+                        # Prepare SSH key for Ansible
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
 
@@ -125,6 +133,6 @@ Fix your repo structure OR update Jenkinsfile paths.
 
     post {
         success { echo "SUCCESS — Docker EC2 Deployment Completed: ${FULL_IMAGE}" }
-        failure { echo "FAILED — Check logs." }
+        failure { echo "DEPLOYMENT FAILED — Check logs." }
     }
 }
