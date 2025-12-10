@@ -142,12 +142,13 @@ pipeline {
 
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
+			ansible-playbook ${env.ANSIBLE_PLAY} \
+		    	    -i ${env.ANSIBLE_INV} \
+    			    --private-key ./key.pem \
+			    --extra-vars "docker_image=${FULL_IMAGE} target_host=${EC2_HOST}"
 
-                        ansible-playbook ${ANSIBLE_PLAY} \
-                            -i ${ANSIBLE_INV} \
-                            --private-key ./key.pem \
-                            --extra-vars "docker_image=${FULL_IMAGE} target_host=${EC2_HOST}"
-                    """
+
+                       """
                 }
             }
         }
