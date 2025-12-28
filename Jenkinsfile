@@ -35,6 +35,7 @@ pipeline {
 		stage('Locate hosts.ini') {
 			steps {
 				script {
+					// Always search relative to the current workspace
 					def inventoryPath = sh(
 						script: "find . -type f -name hosts.ini | head -1",
 						returnStdout: true
@@ -44,7 +45,11 @@ pipeline {
 						error("ERROR: hosts.ini not found in workspace")
 					}
 
-					env.ANSIBLE_INV = "${env.WORKSPACE}/${inventoryPath}".replaceAll('/+', '/')
+					// Resolve to absolute path once
+					env.ANSIBLE_INV = sh(
+						script: "realpath ${inventoryPath}",
+						returnStdout: true
+					).trim()
 
 					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
 					sh "cat ${env.ANSIBLE_INV}"
