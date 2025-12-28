@@ -42,55 +42,44 @@ pipeline {
         /* --------------------------------------------------------------- */
         /* LOCATE hosts.ini ANYWHERE IN WORKSPACE                          */
         /* --------------------------------------------------------------- */
-        stage('Locate hosts.ini') {
-            steps {
-                script {
-                    echo "=== Locating hosts.ini in workspace ==="
+		stage('Locate hosts.ini') {
+			steps {
+				script {
+					env.ANSIBLE_INV = sh(
+						script: "find ${WORKSPACE} -type f -name 'hosts.ini' | head -1",
+						returnStdout: true
+					).trim()
 
-                    def hostsFile = sh(
-                        script: "find ${WORKSPACE} -type f -name 'hosts.ini' | head -1",
-                        returnStdout: true
-                    ).trim()
+					if (!env.ANSIBLE_INV) {
+						error("ERROR: hosts.ini not found in workspace")
+					}
 
-                    echo "DEBUG: hostsFile='${hostsFile}'"
+					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
+					sh "cat ${env.ANSIBLE_INV}"
+				}
+			}
+		}
 
-                    if (!hostsFile) {
-                        error("""
-		        ERROR: hosts.ini not found anywhere in workspace!
-
-     			Expected a file like:
-			/var/lib/jenkins/workspace/<job>/ansible/hosts.ini
-			""")
-                    }
-
-                    env.ANSIBLE_INV = hostsFile
-                    echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
-
-                    echo "=== hosts.ini contents ==="
-                    sh "cat ${env.ANSIBLE_INV}"
-                }
-            }
-        }
 
         /* --------------------------------------------------------------- */
         /* EXTRACT EC2 IP FROM hosts.ini                                   */
         /* --------------------------------------------------------------- */
-        stage('Read EC2 IP from hosts.ini') {
-            steps {
-                script {
-		   def extractedIp = sh(
-    			script: "grep -Eo '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${hostsFile} | head -1",
-    			returnStdout: true
-		).trim()
+		stage('Read EC2 IP from hosts.ini') {
+			steps {
+				script {
+					env.EC2_HOST = sh(
+						script: "grep -Eo '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' ${env.ANSIBLE_INV} | head -1",
+						returnStdout: true
+					).trim()
 
-                    if (!env.EC2_HOST) {
-                        error("ERROR: No valid IP found inside ${env.ANSIBLE_INV}")
-                    }
+					if (!env.EC2_HOST) {
+						error("ERROR: No EC2 IP found in ${env.ANSIBLE_INV}")
+					}
 
-                    echo "Using EC2 host: ${EC2_HOST}"
-                }
-            }
-        }
+					echo "Using EC2 host: ${env.EC2_HOST}"
+				}
+			}
+		}
 
         /* --------------------------------------------------------------- */
         stage('Build Maven App') {
@@ -142,10 +131,10 @@ pipeline {
 
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
-			ansible-playbook ${env.ANSIBLE_PLAY} \
-		    	    -i ${env.ANSIBLE_INV} \
-    			    --private-key ./key.pem \
-			    --extra-vars "docker_image=${FULL_IMAGE} target_host=${EC2_HOST}"
+                        ansible-playbook ${env.ANSIBLE_PLAY} \
+                            -i ${env.ANSIBLE_INV} \
+                            --private-key ./key.pem \
+                            --extra-vars "docker_image=${FULL_IMAGE} target_host=${EC2_HOST}"
 
 
                        """
