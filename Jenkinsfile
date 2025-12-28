@@ -35,16 +35,16 @@ pipeline {
 		stage('Locate hosts.ini') {
 			steps {
 				script {
-					def inventoryPath = sh(
-						script: "find . -type f -name hosts.ini | head -1",
-						returnStdout: true
-					).trim()
+					sh '''
+						find . -type f -name hosts.ini | head -1 > .inventory_path
+					'''
+
+					def inventoryPath = readFile('.inventory_path').trim()
 
 					if (!inventoryPath) {
 						error("ERROR: hosts.ini not found in workspace")
 					}
 
-					// Convert relative → absolute using Jenkins env, not shell tools
 					env.ANSIBLE_INV = "${env.WORKSPACE}/${inventoryPath}".replaceAll('/+', '/')
 
 					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
