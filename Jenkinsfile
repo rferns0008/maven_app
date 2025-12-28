@@ -35,7 +35,6 @@ pipeline {
 		stage('Locate hosts.ini') {
 			steps {
 				script {
-					// Always search relative to the current workspace
 					def inventoryPath = sh(
 						script: "find . -type f -name hosts.ini | head -1",
 						returnStdout: true
@@ -45,18 +44,14 @@ pipeline {
 						error("ERROR: hosts.ini not found in workspace")
 					}
 
-					// Resolve to absolute path once
-					env.ANSIBLE_INV = sh(
-						script: "realpath ${inventoryPath}",
-						returnStdout: true
-					).trim()
+					// Convert relative → absolute using Jenkins env, not shell tools
+					env.ANSIBLE_INV = "${env.WORKSPACE}/${inventoryPath}".replaceAll('/+', '/')
 
 					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
 					sh "cat ${env.ANSIBLE_INV}"
 				}
 			}
 		}
-
 
         stage('Read EC2 IP from hosts.ini') {
             steps {
