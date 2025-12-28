@@ -32,23 +32,26 @@ pipeline {
             }
         }
 
-        stage('Locate hosts.ini') {
-            steps {
-                script {
-                    env.ANSIBLE_INV = sh(
-                        script: "find ${WORKSPACE} -type f -name hosts.ini | head -1",
-                        returnStdout: true
-                    ).trim()
+		stage('Locate hosts.ini') {
+			steps {
+				script {
+					def inventoryPath = sh(
+						script: "find . -type f -name hosts.ini | head -1",
+						returnStdout: true
+					).trim()
 
-                    if (!env.ANSIBLE_INV) {
-                        error("ERROR: hosts.ini not found in workspace")
-                    }
+					if (!inventoryPath) {
+						error("ERROR: hosts.ini not found in workspace")
+					}
 
-                    echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
-                    sh "cat ${env.ANSIBLE_INV}"
-                }
-            }
-        }
+					env.ANSIBLE_INV = "${env.WORKSPACE}/${inventoryPath}".replaceAll('/+', '/')
+
+					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
+					sh "cat ${env.ANSIBLE_INV}"
+				}
+			}
+		}
+
 
         stage('Read EC2 IP from hosts.ini') {
             steps {
