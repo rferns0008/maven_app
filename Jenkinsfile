@@ -68,7 +68,7 @@ pipeline {
 					echo "Using EC2 host: ${env.EC2_HOST}"
 				}
 			}
-}		}
+		}
 
         stage('Build Maven App') {
             steps {
