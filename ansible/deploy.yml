@@ -4,9 +4,14 @@
   become: true
 
   vars:
-    # SAFE DEFAULTS — prevent empty image name
-    docker_image_name: "{{ docker_image_name | default('my-app', true) }}"
-    docker_image_tag: "{{ docker_image_tag | default('latest', true) }}"
+    # Internal defaults (never self-reference)
+    _docker_image_name_default: my-app
+    _docker_image_tag_default: latest
+
+    # Public vars with safe fallback
+    docker_image_name: "{{ docker_image_name | default(_docker_image_name_default) }}"
+    docker_image_tag: "{{ docker_image_tag | default(_docker_image_tag_default) }}"
+
     container_name: my-app
     container_port: 8080
     host_port: 8080
@@ -31,7 +36,7 @@
         groups: docker
         append: true
 
-    - name: Pull application image
+    - name: Pull and run application container
       docker_container:
         name: "{{ container_name }}"
         image: "{{ docker_image_name }}:{{ docker_image_tag }}"
