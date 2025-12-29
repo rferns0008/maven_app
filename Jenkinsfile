@@ -25,21 +25,35 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
-                sh 'docker build -t my-app:latest .'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        docker build -t rferns/maven-app:latest .
+                        docker push rferns/maven-app:latest
+
+                        docker logout
+                    '''
+                }
             }
         }
 
-	stage('Deploy Docker Container (Ansible)') {
-	    steps {
-		sshagent(credentials: ['ec2-ssh-key']) {
-		   sh '''
-		     set -e
-			ansible-playbook ansible/deploy.yml -i ansible/hosts.ini
-		   '''
-		}
-	    }
-	}
+        stage('Deploy via Ansible') {
+            steps {
+                sshagent(credentials: ['ec2-ssh-key']) {
+                    sh '''
+                        set -e
+                        ansible-playbook ansible/deploy.yml \
+                          -i ansible/hosts.ini
+                    '''
+                }
+            }
+        }
     }
 }
