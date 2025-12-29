@@ -57,21 +57,18 @@ pipeline {
 				script {
 					def inventoryPath = 'ansible/hosts.ini'
 
-					env.EC2_HOST = sh(
-						script: '''
-							grep -Eo '([0-9]{1,3}\\.){3}[0-9]{1,3}' ansible/hosts.ini | head -1
-						''',
-						returnStdout: true
-					).trim()
+					def content = readFile(inventoryPath)
 
-					if (!env.EC2_HOST) {
+					def matcher = (content =~ /\b(\d{1,3}\.){3}\d{1,3}\b/)
+					if (!matcher.find()) {
 						error("ERROR: No EC2 IP found in ${inventoryPath}")
 					}
 
+					env.EC2_HOST = matcher.group()
 					echo "Using EC2 host: ${env.EC2_HOST}"
 				}
 			}
-		}
+}		}
 
         stage('Build Maven App') {
             steps {
