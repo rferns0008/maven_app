@@ -52,25 +52,24 @@ pipeline {
 			}
 		}
 
-        stage('Read EC2 IP from hosts.ini') {
-            steps {
-                script {
-                    // SAFEST METHOD — no regex, no shell expansion
-                    env.EC2_HOST = sh(
-                        script: """
-                            awk '/^[0-9]/{print \$1; exit}' ${env.ANSIBLE_INV}
-                        """,
-                        returnStdout: true
-                    ).trim()
+		stage('Read EC2 IP from hosts.ini') {
+			steps {
+				script {
+					def inventoryPath = 'ansible/hosts.ini'
 
-                    if (!env.EC2_HOST) {
-                        error("ERROR: No EC2 IP found in ${env.ANSIBLE_INV}")
-                    }
+					env.EC2_HOST = sh(
+						script: "awk '/^[0-9]/{print \$1; exit}' ${inventoryPath}",
+						returnStdout: true
+					).trim()
 
-                    echo "Using EC2 host: ${env.EC2_HOST}"
-                }
-            }
-        }
+					if (!env.EC2_HOST) {
+						error("ERROR: No EC2 IP found in ${inventoryPath}")
+					}
+
+					echo "Using EC2 host: ${env.EC2_HOST}"
+				}
+			}
+		}
 
         stage('Build Maven App') {
             steps {
