@@ -1,114 +1,43 @@
 pipeline {
     agent any
 
-    environment {
-        IMAGE_REPO = "rferns/maven-app"
-        IMAGE_TAG  = "latest"
-        FULL_IMAGE = "${IMAGE_REPO}:${IMAGE_TAG}"
-
-        ANSIBLE_PLAY = "./ansible/deploy.yml"
-        ANSIBLE_INV  = ""
-        EC2_HOST     = ""
+    tools {
+        maven 'maven-3.9.9'
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Debug Workspace') {
+        stage('Verify Maven') {
             steps {
-                sh '''
-                    echo "=== WORKSPACE ==="
-                    pwd
-                    echo "=== CONTENTS ==="
-                    ls -la
-                    echo "=== FIND hosts.ini ==="
-                    find . -type f -name hosts.ini -print
-                '''
+                sh 'mvn -version'
             }
         }
 
-                stage('Locate hosts.ini') {
-                        steps {
-                                script {
-                                // HARD-CODE repo-relative path (this is correct practice)
-                                        def inventoryPath = 'ansible/hosts.ini'
-
-                                // Validate using LOCAL variable ONLY
-                                if (!fileExists(inventoryPath)) {
-                                        error("ERROR: hosts.ini not found at ${inventoryPath}")
-                                }
-
-                                echo "FOUND hosts.ini at: ${inventoryPath}"
-                                sh "cat ${inventoryPath}"
-
-                                // Export ONLY after validation, for later stages
-                                env.ANSIBLE_INV = inventoryPath
-                                }
-                        }
-                }
-
         stage('Build Maven App') {
             steps {
-                sh "mvn clean package -DskipTests"
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${FULL_IMAGE} ."
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DC_USER',
-                        passwordVariable: 'DC_PASS'
-                    )
-                ]) {
-                    sh '''
-                        echo "$DC_PASS" | docker login -u "$DC_USER" --password-stdin
-                        docker push ${FULL_IMAGE}
-                        docker logout
-                    '''
-                }
+                sh 'docker build -t my-app:latest .'
             }
         }
 
         stage('Deploy via Ansible') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ansible-ssh-key',
-                        keyFileVariable: 'SSH_KEY'
-                    )
-                ]) {
-                    sh '''
-                        export ANSIBLE_HOST_KEY_CHECKING=False
-                        cp ${SSH_KEY} ./key.pem
-                        chmod 600 ./key.pem
-
-						ansible-playbook deploy.yml \
-						-i ansible/hosts.ini
-                    '''
-                }
+                sh '''
+                    ansible-playbook ansible/deploy.yml \
+                      -i ansible/hosts.ini
+                '''
             }
-        }
-    }
-
-    post {
-        success {
-            echo "SUCCESS — Pipeline completed: ${FULL_IMAGE}"
-        }
-        failure {
-            echo "FAILED — check logs."
         }
     }
 }
