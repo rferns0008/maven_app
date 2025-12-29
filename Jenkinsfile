@@ -31,15 +31,15 @@ pipeline {
             }
         }
 
-		stage('Deploy via Ansible') {
-			steps {
-				sshagent(credentials: ['ec2-ssh-key']) {
-					sh '''
-						ansible-playbook ansible/deploy.yml \
-						-i ansible/hosts.ini
-					'''
-				}
-			}
+	stage('Deploy Docker Container (Ansible)') {
+	    steps {
+		sshagent(credentials: ['ec2-ssh-key']) {
+		   sh '''
+		     set -e
+			ansible-playbook ansible/deploy.yml -i ansible/hosts.ini
+		   '''
 		}
+	    }
 	}
+    }
 }
