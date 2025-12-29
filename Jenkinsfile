@@ -56,7 +56,6 @@ pipeline {
 			steps {
 				script {
 					def inventoryPath = 'ansible/hosts.ini'
-
 					def content = readFile(inventoryPath)
 
 					def matcher = (content =~ /\b(\d{1,3}\.){3}\d{1,3}\b/)
@@ -64,7 +63,7 @@ pipeline {
 						error("ERROR: No EC2 IP found in ${inventoryPath}")
 					}
 
-					env.EC2_HOST = matcher.group()
+					env.EC2_HOST = matcher.group(0)
 					echo "Using EC2 host: ${env.EC2_HOST}"
 				}
 			}
