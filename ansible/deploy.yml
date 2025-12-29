@@ -1,39 +1,42 @@
+---
 - name: Deploy Maven App Docker Container
-  hosts: target
-  become: yes
+  hosts: all
+  become: true
+
   vars:
-    docker_image: ""
+    # SAFE DEFAULTS — prevent empty image name
+    docker_image_name: "{{ docker_image_name | default('my-app', true) }}"
+    docker_image_tag: "{{ docker_image_tag | default('latest', true) }}"
+    container_name: my-app
+    container_port: 8080
+    host_port: 8080
 
   tasks:
 
-    - name: Install Docker
+    - name: Ensure Docker is installed
       apt:
         name: docker.io
         state: present
-        update_cache: yes
+        update_cache: true
 
-    - name: Add ubuntu user to docker group
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ensure ubuntu user is in docker group
       user:
         name: ubuntu
         groups: docker
-        append: yes
+        append: true
 
     - name: Pull application image
-      community.docker.docker_image:
-        name: "{{ docker_image }}"
-        source: pull
-
-    - name: Stop existing container
-      community.docker.docker_container:
-        name: mavenapp
-        state: absent
-      ignore_errors: yes
-
-    - name: Start new container
-      community.docker.docker_container:
-        name: mavenapp
-        image: "{{ docker_image }}"
+      docker_container:
+        name: "{{ container_name }}"
+        image: "{{ docker_image_name }}:{{ docker_image_tag }}"
         state: started
         restart_policy: always
+        recreate: true
         published_ports:
-          - "8080:8080"
+          - "{{ host_port }}:{{ container_port }}"
