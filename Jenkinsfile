@@ -32,42 +32,25 @@ pipeline {
             }
         }
 
-		stage('Locate hosts.ini') {
-			steps {
-				script {
-				// HARD-CODE repo-relative path (this is correct practice)
-					def inventoryPath = 'ansible/hosts.ini'
+                stage('Locate hosts.ini') {
+                        steps {
+                                script {
+                                // HARD-CODE repo-relative path (this is correct practice)
+                                        def inventoryPath = 'ansible/hosts.ini'
 
-				// Validate using LOCAL variable ONLY
-				if (!fileExists(inventoryPath)) {
-					error("ERROR: hosts.ini not found at ${inventoryPath}")
-				}
+                                // Validate using LOCAL variable ONLY
+                                if (!fileExists(inventoryPath)) {
+                                        error("ERROR: hosts.ini not found at ${inventoryPath}")
+                                }
 
-				echo "FOUND hosts.ini at: ${inventoryPath}"
-				sh "cat ${inventoryPath}"
+                                echo "FOUND hosts.ini at: ${inventoryPath}"
+                                sh "cat ${inventoryPath}"
 
-				// Export ONLY after validation, for later stages
-				env.ANSIBLE_INV = inventoryPath
-				}
-			}
-		}
-
-		stage('Read EC2 IP from hosts.ini') {
-			steps {
-				script {
-					def inventoryPath = 'ansible/hosts.ini'
-					def content = readFile(inventoryPath)
-
-					def matcher = (content =~ /\b(\d{1,3}\.){3}\d{1,3}\b/)
-					if (!matcher.find()) {
-						error("ERROR: No EC2 IP found in ${inventoryPath}")
-					}
-
-					env.EC2_HOST = matcher.group(0)
-					echo "Using EC2 host: ${env.EC2_HOST}"
-				}
-			}
-		}
+                                // Export ONLY after validation, for later stages
+                                env.ANSIBLE_INV = inventoryPath
+                                }
+                        }
+                }
 
         stage('Build Maven App') {
             steps {
@@ -112,10 +95,8 @@ pipeline {
                         cp ${SSH_KEY} ./key.pem
                         chmod 600 ./key.pem
 
-                        ansible-playbook ${ANSIBLE_PLAY} \
-                          -i ${ANSIBLE_INV} \
-                          --private-key ./key.pem \
-                          --extra-vars "docker_image=${FULL_IMAGE} target_host=${EC2_HOST}"
+						ansible-playbook deploy.yml \
+						-i ansible/hosts.ini
                     '''
                 }
             }
