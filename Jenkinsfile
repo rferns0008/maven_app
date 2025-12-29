@@ -59,7 +59,7 @@ pipeline {
 
 					env.EC2_HOST = sh(
 						script: '''
-							awk '/^[[:space:]]*[0-9]/ { print $1; exit }' ansible/hosts.ini
+							grep -Eo '([0-9]{1,3}\\.){3}[0-9]{1,3}' ansible/hosts.ini | head -1
 						''',
 						returnStdout: true
 					).trim()
