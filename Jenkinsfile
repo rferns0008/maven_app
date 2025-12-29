@@ -35,23 +35,17 @@ pipeline {
 		stage('Locate hosts.ini') {
 			steps {
 				script {
-					sh '''
-						find . -type f -name hosts.ini | head -1 > .inventory_path
-					'''
+					env.ANSIBLE_INV = "${env.WORKSPACE}/ansible/hosts.ini"
 
-					def inventoryPath = readFile('.inventory_path').trim()
-
-					if (!inventoryPath) {
-						error("ERROR: hosts.ini not found in workspace")
-					}
-
-					env.ANSIBLE_INV = "${env.WORKSPACE}/${inventoryPath}".replaceAll('/+', '/')
-
-					echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
-					sh "cat ${env.ANSIBLE_INV}"
+				if (!fileExists(env.ANSIBLE_INV)) {
+					error("ERROR: hosts.ini not found at ${env.ANSIBLE_INV}")
 				}
+
+				echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
+				sh "cat ${env.ANSIBLE_INV}"
 			}
 		}
+	}
 
         stage('Read EC2 IP from hosts.ini') {
             steps {
