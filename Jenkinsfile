@@ -32,12 +32,92 @@ pipeline {
         }
 
         stage('Deploy via Ansible') {
-            steps {
-                sh '''
-                    ansible-playbook ansible/deploy.yml \
-                      -i ansible/hosts.ini
-                '''
-            }
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
+        stage('Deploy via Ansible') {
+			steps {
+				sshagent(credentials: ['ec2-ssh-key']) {
+					sh '''
+						ansible-playbook ansible/deploy.yml \
+						  i ansible/hosts.ini
+					'''	
+				}
+			}
+		}
+
         }
-    }
 }
