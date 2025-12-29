@@ -35,17 +35,22 @@ pipeline {
 		stage('Locate hosts.ini') {
 			steps {
 				script {
-					env.ANSIBLE_INV = "${env.WORKSPACE}/ansible/hosts.ini"
+				// HARD-CODE repo-relative path (this is correct practice)
+					def inventoryPath = 'ansible/hosts.ini'
 
-				if (!fileExists(env.ANSIBLE_INV)) {
-					error("ERROR: hosts.ini not found at ${env.ANSIBLE_INV}")
+				// Validate using LOCAL variable ONLY
+				if (!fileExists(inventoryPath)) {
+					error("ERROR: hosts.ini not found at ${inventoryPath}")
 				}
 
-				echo "FOUND hosts.ini at: ${env.ANSIBLE_INV}"
-				sh "cat ${env.ANSIBLE_INV}"
+				echo "FOUND hosts.ini at: ${inventoryPath}"
+				sh "cat ${inventoryPath}"
+
+				// Export ONLY after validation, for later stages
+				env.ANSIBLE_INV = inventoryPath
+				}
 			}
 		}
-	}
 
         stage('Read EC2 IP from hosts.ini') {
             steps {
