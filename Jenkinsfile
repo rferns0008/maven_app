@@ -21,7 +21,7 @@ pipeline {
 
         stage('Build Maven App') {
             steps {
-                sh 'mvn clean package -DskipTests'	
+                sh 'mvn clean package -DskipTests'
             }
         }
 
@@ -32,60 +32,12 @@ pipeline {
         }
 
         stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	        stage('Deploy via Ansible') {
-			steps {
-				sh '''
-					/opt/ansible-venv/bin/ansible-playbook \
-					  ansible/deploy.yml -i ansible/hosts.ini
-			'''
-		}
-	}
+            steps {
+                sh '''
+                    ansible-playbook ansible/deploy.yml \
+                      -i ansible/hosts.ini
+                '''
+            }
+        }
+    }
 }
