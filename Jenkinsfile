@@ -58,7 +58,9 @@ pipeline {
 					def inventoryPath = 'ansible/hosts.ini'
 
 					env.EC2_HOST = sh(
-						script: "awk '/^[0-9]/{print \$1; exit}' ${inventoryPath}",
+						script: """
+							awk '/^[[:space:]]*[0-9]/{print \$1; exit}' ${inventoryPath}
+						""",
 						returnStdout: true
 					).trim()
 
