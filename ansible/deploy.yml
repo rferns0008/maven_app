@@ -4,19 +4,16 @@
   become: true
 
   vars:
-    # Internal defaults (never self-reference)
-    _docker_image_name_default: my-app
-    _docker_image_tag_default: latest
-
-    # Public vars with safe fallback
-    docker_image_name: "{{ docker_image_name | default(_docker_image_name_default) }}"
-    docker_image_tag: "{{ docker_image_tag | default(_docker_image_tag_default) }}"
-
-    container_name: my-app
-    container_port: 8080
-    host_port: 8080
+    # Hard defaults (never overridden internally)
+    image_name_default: my-app
+    image_tag_default: latest
 
   tasks:
+
+    - name: Resolve Docker image name safely
+      set_fact:
+        docker_image_name_resolved: "{{ docker_image_name | default(image_name_default) }}"
+        docker_image_tag_resolved: "{{ docker_image_tag | default(image_tag_default) }}"
 
     - name: Ensure Docker is installed
       apt:
@@ -38,10 +35,10 @@
 
     - name: Pull and run application container
       docker_container:
-        name: "{{ container_name }}"
-        image: "{{ docker_image_name }}:{{ docker_image_tag }}"
+        name: my-app
+        image: "{{ docker_image_name_resolved }}:{{ docker_image_tag_resolved }}"
         state: started
         restart_policy: always
         recreate: true
         published_ports:
-          - "{{ host_port }}:{{ container_port }}"
+          - "8080:8080"
