@@ -22,7 +22,7 @@ pipeline {
                     EC2_HOST = sh(
                         script: '''
                           awk '
-                            /^\[target\]/ {found=1; next}
+                            /^\[target]/ {found=1; next}
                             found && NF {print $1; exit}
                           ' ansible/hosts.ini
                         ''',
