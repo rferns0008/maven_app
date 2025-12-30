@@ -12,8 +12,7 @@ pipeline {
         stage('Read target host from Ansible inventory') {
             steps {
                 script {
-                    // FIX: use triple-single-quotes so $1 is NOT interpreted by Groovy
-                    TARGET_HOST = sh(
+                    def TARGET_HOST = sh(
                         script: '''
                             awk 'NF {print $1; exit}' ansible/hosts.ini
                         ''',
@@ -28,7 +27,6 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Build stage placeholder"
-                // your existing build logic remains unchanged
             }
         }
 
@@ -38,6 +36,7 @@ pipeline {
                     echo "Deploying to ${TARGET_HOST}"
 
                     sh """
+                        export ANSIBLE_HOST_KEY_CHECKING=False
                         ansible-playbook \
                           -i ansible/hosts.ini \
                           ansible/deploy.yml \
