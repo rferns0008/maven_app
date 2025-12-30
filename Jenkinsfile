@@ -12,7 +12,6 @@ pipeline {
         stage('Read target host from Ansible inventory') {
             steps {
                 script {
-                    // FIX: store value in env so it is available in later stages
                     env.TARGET_HOST = sh(
                         script: '''
                             awk 'NF {print $1; exit}' ansible/hosts.ini
@@ -36,13 +35,23 @@ pipeline {
                 script {
                     echo "Deploying to ${env.TARGET_HOST}"
 
-                    sh """
-                        export ANSIBLE_HOST_KEY_CHECKING=False
-                        ansible-playbook \
-                          -i ansible/hosts.ini \
-                          ansible/deploy.yml \
-                          --extra-vars "target_host=${env.TARGET_HOST}"
-                    """
+                    withCredentials([
+                        sshUserPrivateKey(
+                            credentialsId: 'ec2-ssh-key',
+                            keyFileVariable: 'SSH_KEY',
+                            usernameVariable: 'SSH_USER'
+                        )
+                    ]) {
+                        sh """
+                            export ANSIBLE_HOST_KEY_CHECKING=False
+                            ansible-playbook \
+                              -i ansible/hosts.ini \
+                              ansible/deploy.yml \
+                              --private-key ${SSH_KEY} \
+                              -u ${SSH_USER} \
+                              --extra-vars "target_host=${env.TARGET_HOST}"
+                        """
+                    }
                 }
             }
         }
