@@ -12,14 +12,15 @@ pipeline {
         stage('Read target host from Ansible inventory') {
             steps {
                 script {
-                    def TARGET_HOST = sh(
+                    // FIX: store value in env so it is available in later stages
+                    env.TARGET_HOST = sh(
                         script: '''
                             awk 'NF {print $1; exit}' ansible/hosts.ini
                         ''',
                         returnStdout: true
                     ).trim()
 
-                    echo "Target host resolved from hosts.ini: ${TARGET_HOST}"
+                    echo "Target host resolved from hosts.ini: ${env.TARGET_HOST}"
                 }
             }
         }
@@ -33,14 +34,14 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    echo "Deploying to ${TARGET_HOST}"
+                    echo "Deploying to ${env.TARGET_HOST}"
 
                     sh """
                         export ANSIBLE_HOST_KEY_CHECKING=False
                         ansible-playbook \
                           -i ansible/hosts.ini \
                           ansible/deploy.yml \
-                          --extra-vars "target_host=${TARGET_HOST}"
+                          --extra-vars "target_host=${env.TARGET_HOST}"
                     """
                 }
             }
