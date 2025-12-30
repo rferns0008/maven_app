@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         EC2_USER = "ubuntu"
-        EC2_HOST = "10.0.0.173"   // ✅ FIXED
         APP_NAME = "maven-app"
         IMAGE    = "rferns/maven-app:latest"
     }
@@ -14,6 +13,28 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/rferns0008/maven_app.git'
+            }
+        }
+
+        stage('Resolve EC2 Host from Ansible Inventory') {
+            steps {
+                script {
+                    EC2_HOST = sh(
+                        script: """
+                          awk '
+                            /^\\[target\\]/ {found=1; next}
+                            found && NF {print \\$1; exit}
+                          ' ansible/hosts.ini
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (!EC2_HOST) {
+                        error "❌ Failed to resolve EC2 host from ansible/hosts.ini"
+                    }
+
+                    echo "✅ Using EC2 host from ansible inventory: ${EC2_HOST}"
+                }
             }
         }
 
@@ -42,7 +63,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Kubernetes (Minikube) deployment completed successfully"
+            echo "✅ Kubernetes deployment completed using Ansible inventory IP"
         }
         failure {
             echo "❌ Kubernetes deployment failed"
