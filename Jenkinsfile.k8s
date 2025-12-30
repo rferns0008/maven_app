@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        EC2_USER = "ubuntu"
+        SSH_USER = "ubuntu"
         APP_NAME = "maven-app"
         IMAGE    = "rferns/maven-app:latest"
     }
@@ -16,7 +16,7 @@ pipeline {
             }
         }
 
-        stage('Resolve EC2 Host from Ansible Inventory') {
+        stage('Resolve Minikube Host from Ansible Inventory') {
             steps {
                 script {
                     EC2_HOST = sh(
@@ -30,28 +30,18 @@ pipeline {
                     ).trim()
 
                     if (!EC2_HOST) {
-                        error "❌ Failed to resolve EC2 host from ansible/hosts.ini"
+                        error "❌ Could not resolve EC2 host from ansible/hosts.ini"
                     }
 
-                    echo "✅ Using EC2 host from ansible inventory: ${EC2_HOST}"
+                    echo "✅ Deploying to Minikube host: ${EC2_HOST}"
                 }
             }
         }
 
-        stage('Copy Kubernetes Manifests to EC2') {
+        stage('Deploy Existing Image to Minikube') {
             steps {
                 sh """
-                  ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} 'mkdir -p /home/ubuntu/k8s'
-                  scp -o StrictHostKeyChecking=no k8s/*.yml \
-                      ${EC2_USER}@${EC2_HOST}:/home/ubuntu/k8s/
-                """
-            }
-        }
-
-        stage('Deploy to Existing Minikube') {
-            steps {
-                sh """
-                  ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
+                  ssh -o StrictHostKeyChecking=no ${SSH_USER}@${EC2_HOST} << 'EOF'
                     kubectl apply -f /home/ubuntu/k8s/deploy.yml
                     kubectl apply -f /home/ubuntu/k8s/service.yml
                     kubectl rollout status deployment/maven-app
@@ -63,10 +53,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Kubernetes deployment completed using Ansible inventory IP"
+            echo "✅ Existing image deployed successfully to Minikube"
         }
         failure {
-            echo "❌ Kubernetes deployment failed"
+            echo "❌ Minikube deployment failed"
         }
     }
 }
