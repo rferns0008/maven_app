@@ -16,11 +16,19 @@ spec:
         - name: maven-app
           image: rferns/maven-app:latest
           imagePullPolicy: Always
+
+          # Keep container alive
           command: ["/bin/sh", "-c"]
           args:
             - |
-              echo "Starting maven-app container";
-              # run the image default command (prints Hello World)
-              /proc/1/exe || true;
-              echo "Keeping container alive";
-              while true; do sleep 3600; done
+              sleep infinity
+
+          # Print Hello World once, without restart
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "Hello World"
