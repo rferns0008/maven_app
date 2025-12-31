@@ -1,23 +1,42 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: maven-app
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: maven-app
-  template:
-    metadata:
-      labels:
-        app: maven-app
-    spec:
-      containers:
-        - name: maven-app
-          image: rferns/maven-app:latest
-          imagePullPolicy: Always
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "Hello World";
-              sleep infinity
+- name: Deploy Maven App Docker Container
+  hosts: all
+  become: true
+
+  vars:
+    image_name_default: rferns/maven-app
+    image_tag_default: latest
+
+  tasks:
+
+    - name: Resolve Docker image variables safely
+      set_fact:
+        docker_image_name_resolved: "{{ docker_image_name | default(image_name_default) }}"
+        docker_image_tag_resolved: "{{ docker_image_tag | default(image_tag_default) }}"
+
+    - name: Ensure Docker is installed
+      apt:
+        name: docker.io
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ensure ubuntu user is in docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    - name: Pull and run application container
+      docker_container:
+        name: maven-app
+        image: "{{ docker_image_name_resolved }}:{{ docker_image_tag_resolved }}"
+        state: started
+        restart_policy: always
+        recreate: true
+        published_ports:
+          - "8080:8080"
