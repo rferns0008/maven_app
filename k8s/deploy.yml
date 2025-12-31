@@ -16,19 +16,8 @@ spec:
         - name: maven-app
           image: rferns/maven-app:latest
           imagePullPolicy: Always
-
-          # Keep container alive
           command: ["/bin/sh", "-c"]
           args:
             - |
+              echo "Hello World";
               sleep infinity
-
-          # Print Hello World once, without restart
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - |
-                    echo "Hello World"
