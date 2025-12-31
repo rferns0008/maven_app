@@ -1,76 +1,23 @@
-pipeline {
-    agent any
-
-    environment {
-        SSH_USER = "ubuntu"
-        APP_NAME = "maven-app"
-        IMAGE    = "rferns/maven-app:latest"
-    }
-
-    stages {
-
-        stage('Checkout Source') {
-            steps {
-                git branch: 'main',
-                    url: 'https://github.com/rferns0008/maven_app.git'
-            }
-        }
-
-        stage('Resolve Minikube Host from Ansible Inventory') {
-            steps {
-                script {
-                    def host = sh(
-                        script: '''
-                          awk '
-                            $0 == "[target]" {found=1; next}
-                            found && NF {print $1; exit}
-                          ' ansible/hosts.ini
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!host) {
-                        error "❌ Could not resolve EC2 host from ansible/hosts.ini"
-                    }
-
-                    env.EC2_HOST = host
-                    echo "✅ Minikube host resolved from inventory: ${env.EC2_HOST}"
-                }
-            }
-        }
-
-        stage('Copy Kubernetes Manifests to EC2') {
-            steps {
-                sshagent(credentials: ['ec2-ssh-key']) {
-                    sh """
-                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} 'mkdir -p /home/ubuntu/k8s'
-                      scp -o StrictHostKeyChecking=no k8s/deploy.yml k8s/service.yml \
-                          ${SSH_USER}@${env.EC2_HOST}:/home/ubuntu/k8s/
-                    """
-                }
-            }
-        }
-
-        stage('Deploy Existing Image to Minikube') {
-            steps {
-                sshagent(credentials: ['ec2-ssh-key']) {
-                    sh """
-                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} << 'EOF'
-                        minikube kubectl -- apply -f /home/ubuntu/k8s/deploy.yml
-                        minikube kubectl -- apply -f /home/ubuntu/k8s/service.yml
-                        minikube kubectl -- rollout status deployment/maven-app
-                    """
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "✅ Existing image deployed successfully to Minikube"
-        }
-        failure {
-            echo "❌ Minikube deployment failed"
-        }
-    }
-}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maven-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: maven-app
+  template:
+    metadata:
+      labels:
+        app: maven-app
+    spec:
+      containers:
+        - name: maven-app
+          image: rferns/maven-app:latest
+          imagePullPolicy: Always
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Starting maven-app container";
+              while true; do sleep 3600; done
