@@ -39,14 +39,26 @@ pipeline {
             }
         }
 
+        stage('Copy Kubernetes Manifests to EC2') {
+            steps {
+                sshagent(credentials: ['ec2-ssh-key']) {
+                    sh """
+                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} 'mkdir -p /home/ubuntu/k8s'
+                      scp -o StrictHostKeyChecking=no k8s/deploy.yml k8s/service.yml \
+                          ${SSH_USER}@${env.EC2_HOST}:/home/ubuntu/k8s/
+                    """
+                }
+            }
+        }
+
         stage('Deploy Existing Image to Minikube') {
             steps {
                 sshagent(credentials: ['ec2-ssh-key']) {
                     sh """
                       ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} << 'EOF'
-                        kubectl apply -f /home/ubuntu/k8s/deploy.yml
-                        kubectl apply -f /home/ubuntu/k8s/service.yml
-                        kubectl rollout status deployment/maven-app
+                        minikube kubectl -- apply -f /home/ubuntu/k8s/deploy.yml
+                        minikube kubectl -- apply -f /home/ubuntu/k8s/service.yml
+                        minikube kubectl -- rollout status deployment/maven-app
                       EOF
                     """
                 }
