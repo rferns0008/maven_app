@@ -16,5 +16,8 @@ spec:
         - name: maven-app
           image: rferns/maven-app:latest
           imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Starting maven-app container";
+              while true; do sleep 3600; done
