@@ -19,7 +19,7 @@ pipeline {
         stage('Resolve Minikube Host from Ansible Inventory') {
             steps {
                 script {
-                    EC2_HOST = sh(
+                    def host = sh(
                         script: '''
                           awk '
                             $0 == "[target]" {found=1; next}
@@ -29,28 +29,30 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    if (!EC2_HOST) {
+                    if (!host) {
                         error "❌ Could not resolve EC2 host from ansible/hosts.ini"
                     }
 
-                    echo "✅ Minikube host resolved from inventory: ${EC2_HOST}"
+                    env.EC2_HOST = host
+                    echo "✅ Minikube host resolved from inventory: ${env.EC2_HOST}"
                 }
             }
         }
 
-	stage('Deploy Existing Image to Minikube') {
-	   steps {
-	      sshagent(credentials: ['ec2-ssh-key']) {
-		sh """
-		  ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} << 'EOF'
-		    kubectl apply -f /home/ubuntu/k8s/deploy.yml
-		    kubectl apply -f /home/ubuntu/k8s/service.yml
-		    kubectl rollout status deployment/maven-app
-		  EOF
-		"""
-	      }
-	   }
-	}
+        stage('Deploy Existing Image to Minikube') {
+            steps {
+                sshagent(credentials: ['ec2-ssh-key']) {
+                    sh """
+                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} << 'EOF'
+                        kubectl apply -f /home/ubuntu/k8s/deploy.yml
+                        kubectl apply -f /home/ubuntu/k8s/service.yml
+                        kubectl rollout status deployment/maven-app
+                      EOF
+                    """
+                }
+            }
+        }
+    }
 
     post {
         success {
