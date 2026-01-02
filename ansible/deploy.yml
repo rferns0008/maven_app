@@ -33,11 +33,12 @@
         append: true
 
     - name: Pull and run application container
-      docker_container:
+      community.docker.docker_container:
         name: maven-app
         image: "{{ docker_image_name_resolved }}:{{ docker_image_tag_resolved }}"
         state: started
-        restart_policy: always
+        restart_policy: unless-stopped
         recreate: true
+        command: /bin/sh -c "echo 'Hello World!'; sleep infinity"
         published_ports:
           - "8080:8080"
