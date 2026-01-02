@@ -32,13 +32,20 @@
         groups: docker
         append: true
 
-    - name: Pull and run application container
+    # 🔥 CRITICAL FIX: hard stop & remove container to break restart loop
+    - name: Stop and remove existing maven-app container (hard reset)
+      community.docker.docker_container:
+        name: maven-app
+        state: absent
+        force_kill: true
+
+    # ✅ Correct behavior: print once, stay alive
+    - name: Run maven-app container (print once, stay alive)
       community.docker.docker_container:
         name: maven-app
         image: "{{ docker_image_name_resolved }}:{{ docker_image_tag_resolved }}"
         state: started
         restart_policy: unless-stopped
-        recreate: true
         command: /bin/sh -c "echo 'Hello World!'; sleep infinity"
         published_ports:
           - "8080:8080"
