@@ -37,7 +37,7 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo "Running Maven build (system Maven)"
+                echo "Running Maven build"
                 bat 'mvn -version'
                 bat 'mvn clean package'
             }
@@ -45,35 +45,34 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
-                    bat '''
-                    REM Copy SSH key into WSL-accessible location
-                    wsl mkdir -p /tmp/jenkins-ssh
-                    wsl cp "%SSH_KEY%" /tmp/jenkins-ssh/id_rsa
-                    wsl chmod 600 /tmp/jenkins-ssh/id_rsa
+                script {
+                    withCredentials([
+                        sshUserPrivateKey(
+                            credentialsId: 'ec2-ssh-key',
+                            keyFileVariable: 'SSH_KEY',
+                            usernameVariable: 'SSH_USER'
+                        )
+                    ]) {
+                        bat """
+                        wsl mkdir -p /tmp/jenkins-ssh
+                        wsl cp "${SSH_KEY}" /tmp/jenkins-ssh/id_rsa
+                        wsl chmod 600 /tmp/jenkins-ssh/id_rsa
 
-                    REM Run Ansible using injected key
-                    wsl ansible-playbook ansible/deploy.yml ^
-                    -i ansible/hosts.ini ^
-                    --private-key /tmp/jenkins-ssh/id_rsa ^
-                    -u %SSH_USER% ^
-                    --ssh-common-args="-o StrictHostKeyChecking=no"
-                    '''
+                        wsl ansible-playbook ansible/deploy.yml ^
+                          -i ansible/hosts.ini ^
+                          -u ${SSH_USER} ^
+                          --private-key /tmp/jenkins-ssh/id_rsa ^
+                          --ssh-common-args="-o StrictHostKeyChecking=no"
+                        """
+                    }
                 }
             }
         }
-
+    }
 
     post {
         always {
             script {
-                // cleanWs MUST run inside a workspace context
                 cleanWs()
             }
         }
