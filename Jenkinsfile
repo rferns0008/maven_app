@@ -13,28 +13,6 @@ pipeline {
             }
         }
 
-        stage('Read target host from Ansible inventory') {
-            steps {
-                script {
-                    def targetHost = powershell(
-                        script: '''
-                        Get-Content ansible\\hosts.ini |
-                        Where-Object { $_ -and $_ -notmatch '^\\s*#' } |
-                        Select-Object -First 1
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!targetHost) {
-                        error "No valid host found in ansible/hosts.ini"
-                    }
-
-                    echo "Target host resolved as: ${targetHost}"
-                    env.TARGET_HOST = targetHost
-                }
-            }
-        }
-
         stage('Build') {
             steps {
                 echo "Running Maven build"
@@ -53,22 +31,22 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                    REM ===============================
+                    REM =====================================
                     REM Prepare SSH key inside WSL
-                    REM ===============================
+                    REM =====================================
 
                     wsl mkdir -p /tmp/jenkins-ssh
 
-                    REM Convert Windows key path to WSL path
+                    REM Convert Windows path -> WSL path
                     for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
 
-                    REM Copy key and secure permissions
+                    REM Copy key and set permissions
                     wsl cp "%WSL_KEY%" /tmp/jenkins-ssh/id_rsa
                     wsl chmod 600 /tmp/jenkins-ssh/id_rsa
 
-                    REM ===============================
-                    REM Run Ansible deploy
-                    REM ===============================
+                    REM =====================================
+                    REM Run Ansible deployment
+                    REM =====================================
 
                     wsl ansible-playbook ansible/deploy.yml ^
                       -i ansible/hosts.ini ^
@@ -84,7 +62,15 @@ pipeline {
     post {
         always {
             script {
-                cleanWs()
+                try {
+                    cleanWs(
+                        deleteDirs: true,
+                        disableDeferredWipeout: true,
+                        notFailBuild: true
+                    )
+                } catch (err) {
+                    echo "Workspace cleanup skipped (Windows file lock): ${err}"
+                }
             }
         }
     }
