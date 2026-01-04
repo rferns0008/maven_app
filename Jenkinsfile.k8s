@@ -57,9 +57,9 @@ pipeline {
                     sh """
                       ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} "
                         minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml
-		        minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml
-			minikube kubectl -- rollout status deployment/maven-app -n dev
-		       "
+                        minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml
+                        minikube kubectl -- rollout status deployment/maven-app -n dev
+                       "
                     """
                 }
             }
