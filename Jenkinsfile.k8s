@@ -4,6 +4,7 @@ pipeline {
     environment {
         SSH_USER = "ubuntu"
         APP_NAME = "maven-app"
+        IMAGE    = "rferns/maven-app:latest"
     }
 
     stages {
@@ -45,11 +46,11 @@ pipeline {
             steps {
                 sshagent(credentials: ['ec2-ssh-key']) {
                     bat '''
-                    wsl ssh -o StrictHostKeyChecking=no ubuntu@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
+                    wsl ssh -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
 
                     wsl scp -o StrictHostKeyChecking=no ^
                       k8s/deploy.yml k8s/service.yml ^
-                      ubuntu@%EC2_HOST%:/home/ubuntu/k8s/
+                      %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
                     '''
                 }
             }
@@ -59,7 +60,7 @@ pipeline {
             steps {
                 sshagent(credentials: ['ec2-ssh-key']) {
                     bat '''
-                    wsl ssh -o StrictHostKeyChecking=no ubuntu@%EC2_HOST% "
+                    wsl ssh -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
                       minikube update-context &&
                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml &&
@@ -73,7 +74,7 @@ pipeline {
 
     post {
         success {
-            echo "Deployment to Minikube completed successfully"
+            echo "Existing image deployed successfully to Minikube"
         }
         failure {
             echo "Minikube deployment failed"
