@@ -32,7 +32,7 @@ pipeline {
                     ).trim()
 
                     if (!host) {
-                        error "Could not resolve EC2 host from ansible/hosts.ini"
+                        error "Could not resolve EC2 host"
                     }
 
                     env.EC2_HOST = host
@@ -50,9 +50,12 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                    ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
+                    REM Convert Jenkins key path to WSL path
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
 
-                    scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no ^
+                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
+
+                    wsl scp -i %WSL_KEY% -o StrictHostKeyChecking=no ^
                       k8s/deploy.yml k8s/service.yml ^
                       %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
                     '''
@@ -69,11 +72,14 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                    ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% ^
-                      "minikube update-context && ^
-                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml && ^
-                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml && ^
-                       minikube kubectl -- rollout status deployment/maven-app -n dev"
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+
+                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
+                      minikube update-context &&
+                      minikube kubectl apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
+                      minikube kubectl apply -n dev -f /home/ubuntu/k8s/service.yml &&
+                      minikube kubectl rollout status deployment/maven-app -n dev
+                    "
                     '''
                 }
             }
