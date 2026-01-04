@@ -4,7 +4,6 @@ pipeline {
     environment {
         SSH_USER = "ubuntu"
         APP_NAME = "maven-app"
-        IMAGE    = "rferns/maven-app:latest"
     }
 
     stages {
@@ -33,35 +32,24 @@ pipeline {
                     ).trim()
 
                     if (!host) {
-                        error "❌ Could not resolve EC2 host from ansible/hosts.ini"
+                        error "Could not resolve EC2 host from ansible/hosts.ini"
                     }
 
                     env.EC2_HOST = host
-                    echo "✅ Minikube host resolved from inventory: ${env.EC2_HOST}"
+                    echo "Minikube host resolved: ${env.EC2_HOST}"
                 }
             }
         }
 
         stage('Copy Kubernetes Manifests to EC2') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
+                sshagent(credentials: ['ec2-ssh-key']) {
                     bat '''
-                    REM Convert Jenkins SSH key path to WSL path
-                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+                    wsl ssh -o StrictHostKeyChecking=no ubuntu@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
 
-                    REM Create k8s directory on EC2
-                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
-
-                    REM Copy Kubernetes manifests
-                    wsl scp -i %WSL_KEY% -o StrictHostKeyChecking=no ^
+                    wsl scp -o StrictHostKeyChecking=no ^
                       k8s/deploy.yml k8s/service.yml ^
-                      %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
+                      ubuntu@%EC2_HOST%:/home/ubuntu/k8s/
                     '''
                 }
             }
@@ -69,19 +57,9 @@ pipeline {
 
         stage('Deploy Existing Image to Minikube') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
+                sshagent(credentials: ['ec2-ssh-key']) {
                     bat '''
-                    REM Convert Jenkins SSH key path to WSL path
-                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
-
-                    REM Deploy manifests into Minikube
-                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
+                    wsl ssh -o StrictHostKeyChecking=no ubuntu@%EC2_HOST% "
                       minikube update-context &&
                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
                       minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml &&
@@ -95,10 +73,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Existing image deployed successfully to Minikube"
+            echo "Deployment to Minikube completed successfully"
         }
         failure {
-            echo "❌ Minikube deployment failed"
+            echo "Minikube deployment failed"
         }
     }
 }
