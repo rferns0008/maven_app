@@ -11,20 +11,23 @@ pipeline {
 
         stage('Checkout Source') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/rferns0008/maven_app.git'
+                checkout scm
             }
         }
 
         stage('Resolve Minikube Host from Ansible Inventory') {
             steps {
                 script {
-                    def host = sh(
+                    def host = powershell(
                         script: '''
-                          awk '
-                            $0 == "[target]" {found=1; next}
-                            found && NF {print $1; exit}
-                          ' ansible/hosts.ini
+                        $found = $false
+                        Get-Content ansible\\hosts.ini | ForEach-Object {
+                            if ($_ -eq "[target]") { $found = $true; return }
+                            if ($found -and $_.Trim() -ne "") {
+                                ($_ -split "\\s+")[0]
+                                break
+                            }
+                        }
                         ''',
                         returnStdout: true
                     ).trim()
@@ -41,26 +44,50 @@ pipeline {
 
         stage('Copy Kubernetes Manifests to EC2') {
             steps {
-                sshagent(credentials: ['ec2-ssh-key']) {
-                    sh """
-                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} 'mkdir -p /home/ubuntu/k8s'
-                      scp -o StrictHostKeyChecking=no k8s/deploy.yml k8s/service.yml \
-                          ${SSH_USER}@${env.EC2_HOST}:/home/ubuntu/k8s/
-                    """
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    bat '''
+                    REM Convert Jenkins SSH key path to WSL path
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+
+                    REM Create k8s directory on EC2
+                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
+
+                    REM Copy Kubernetes manifests
+                    wsl scp -i %WSL_KEY% -o StrictHostKeyChecking=no ^
+                      k8s/deploy.yml k8s/service.yml ^
+                      %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
+                    '''
                 }
             }
         }
 
         stage('Deploy Existing Image to Minikube') {
             steps {
-                sshagent(credentials: ['ec2-ssh-key']) {
-                    sh """
-                      ssh -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_HOST} "
-                        minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml
-                        minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml
-                        minikube kubectl -- rollout status deployment/maven-app -n dev
-                       "
-                    """
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    bat '''
+                    REM Convert Jenkins SSH key path to WSL path
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+
+                    REM Deploy manifests into Minikube
+                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
+                      minikube update-context &&
+                      minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
+                      minikube kubectl -- apply -n dev -f /home/ubuntu/k8s/service.yml &&
+                      minikube kubectl -- rollout status deployment/maven-app -n dev
+                    "
+                    '''
                 }
             }
         }
