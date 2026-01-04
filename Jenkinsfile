@@ -1,11 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        MAVEN_HOME = tool name: 'Maven', type: 'maven'
-        PATH = "${MAVEN_HOME}\\bin;${env.PATH}"
-    }
-
     options {
         timestamps()
     }
@@ -21,10 +16,6 @@ pipeline {
         stage('Read target host from Ansible inventory') {
             steps {
                 script {
-                    /*
-                     * Read first non-empty line from ansible/hosts.ini
-                     * Windows-safe implementation
-                     */
                     def targetHost = powershell(
                         script: '''
                         Get-Content ansible\\hosts.ini |
@@ -46,7 +37,8 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo "Starting Maven build..."
+                echo "Running Maven build (system Maven)"
+                bat 'mvn -version'
                 bat 'mvn clean package'
             }
         }
@@ -54,13 +46,8 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "Deploying to ${env.TARGET_HOST}"
-
-                /*
-                 * Use Ansible from Windows
-                 * Assumes ansible is installed and available in PATH
-                 */
                 bat '''
-                ansible-playbook ansible/deploy.yml ^
+                wsl ansible-playbook ansible/deploy.yml ^
                   -i ansible/hosts.ini ^
                   --extra-vars "target_host=%TARGET_HOST%"
                 '''
@@ -69,14 +56,11 @@ pipeline {
     }
 
     post {
-        success {
-            echo "Pipeline completed successfully"
-        }
-        failure {
-            echo "Pipeline failed — check stage logs above"
-        }
         always {
-            cleanWs()
+            script {
+                // cleanWs MUST run inside a workspace context
+                cleanWs()
+            }
         }
     }
 }
