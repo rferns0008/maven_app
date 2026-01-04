@@ -7,12 +7,6 @@ pipeline {
 
     stages {
 
-        stage('Clean workspace') {
-            steps {
-                cleanWs()
-            }
-        }
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -51,26 +45,37 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                script {
-                    withCredentials([
-                        sshUserPrivateKey(
-                            credentialsId: 'ec2-ssh-key',
-                            keyFileVariable: 'SSH_KEY',
-                            usernameVariable: 'SSH_USER'
-                        )
-                    ]) {
-                        bat """
-                        wsl mkdir -p /tmp/jenkins-ssh
-                        wsl cp "${SSH_KEY}" /tmp/jenkins-ssh/id_rsa
-                        wsl chmod 600 /tmp/jenkins-ssh/id_rsa
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    bat '''
+                    REM ===============================
+                    REM Prepare SSH key inside WSL
+                    REM ===============================
 
-                        wsl ansible-playbook ansible/deploy.yml ^
-                          -i ansible/hosts.ini ^
-                          -u ${SSH_USER} ^
-                          --private-key /tmp/jenkins-ssh/id_rsa ^
-                          --ssh-common-args="-o StrictHostKeyChecking=no"
-                        """
-                    }
+                    wsl mkdir -p /tmp/jenkins-ssh
+
+                    REM Convert Windows key path to WSL path
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+
+                    REM Copy key and secure permissions
+                    wsl cp "%WSL_KEY%" /tmp/jenkins-ssh/id_rsa
+                    wsl chmod 600 /tmp/jenkins-ssh/id_rsa
+
+                    REM ===============================
+                    REM Run Ansible deploy
+                    REM ===============================
+
+                    wsl ansible-playbook ansible/deploy.yml ^
+                      -i ansible/hosts.ini ^
+                      -u %SSH_USER% ^
+                      --private-key /tmp/jenkins-ssh/id_rsa ^
+                      --ssh-common-args="-o StrictHostKeyChecking=no"
+                    '''
                 }
             }
         }
