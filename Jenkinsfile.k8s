@@ -32,7 +32,7 @@ pipeline {
                     ).trim()
 
                     if (!host) {
-                        error "Could not resolve EC2 host"
+                        error "Could not resolve EC2 host from ansible/hosts.ini"
                     }
 
                     env.EC2_HOST = host
@@ -41,7 +41,7 @@ pipeline {
             }
         }
 
-        stage('Copy Kubernetes Manifests to EC2') {
+        stage('Prepare SSH Key in WSL') {
             steps {
                 withCredentials([
                     sshUserPrivateKey(
@@ -50,38 +50,40 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                    REM Convert Jenkins key path to WSL path
-                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
+                    REM Convert Jenkins-injected key path to WSL path
+                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_SRC_KEY=%%i
 
-                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
-
-                    wsl scp -i %WSL_KEY% -o StrictHostKeyChecking=no ^
-                      k8s/deploy.yml k8s/service.yml ^
-                      %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
+                    REM Create SSH directory and copy key into WSL filesystem
+                    wsl mkdir -p ~/.ssh
+                    wsl cp %WSL_SRC_KEY% ~/.ssh/jenkins_ec2_key
+                    wsl chmod 600 ~/.ssh/jenkins_ec2_key
                     '''
                 }
             }
         }
 
+        stage('Copy Kubernetes Manifests to EC2') {
+            steps {
+                bat '''
+                wsl ssh -i ~/.ssh/jenkins_ec2_key -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "mkdir -p /home/ubuntu/k8s"
+
+                wsl scp -i ~/.ssh/jenkins_ec2_key -o StrictHostKeyChecking=no ^
+                  k8s/deploy.yml k8s/service.yml ^
+                  %SSH_USER%@%EC2_HOST%:/home/ubuntu/k8s/
+                '''
+            }
+        }
+
         stage('Deploy Existing Image to Minikube') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY'
-                    )
-                ]) {
-                    bat '''
-                    for /f %%i in ('wsl wslpath "%SSH_KEY%"') do set WSL_KEY=%%i
-
-                    wsl ssh -i %WSL_KEY% -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
-                      minikube update-context &&
-                      minikube kubectl apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
-                      minikube kubectl apply -n dev -f /home/ubuntu/k8s/service.yml &&
-                      minikube kubectl rollout status deployment/maven-app -n dev
-                    "
-                    '''
-                }
+                bat '''
+                wsl ssh -i ~/.ssh/jenkins_ec2_key -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% "
+                  minikube update-context &&
+                  minikube kubectl apply -n dev -f /home/ubuntu/k8s/deploy.yml &&
+                  minikube kubectl apply -n dev -f /home/ubuntu/k8s/service.yml &&
+                  minikube kubectl rollout status deployment/maven-app -n dev
+                "
+                '''
             }
         }
     }
